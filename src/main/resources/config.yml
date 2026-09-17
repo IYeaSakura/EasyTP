@@ -1,0 +1,169 @@
+# EasyTP configuration
+# Language files are located in plugins/EasyTP/lang/
+# Supported values: en, zh
+language: zh
+
+# SQLite database settings
+database:
+  # Database file path, relative to plugins/EasyTP/
+  file: "data.db"
+
+# Debug logging. Leave this off in normal operation — it is verbose.
+# When enabled, EasyTP writes detailed diagnostics to the server console, including a periodic
+# RTP pipeline summary (chunk load timings, backpressure skips, pool contents, how many pooled
+# chunks are still loaded, spatial-memory hit rate and storage flush activity). This is the
+# intended tool for diagnosing memory or lag problems caused by random teleport.
+debug:
+  enabled: false
+  # Seconds between RTP pipeline summaries
+  summary-interval-seconds: 30
+
+# Command settings.
+#
+# enable   - Per command class. Disabling a class unregisters its commands entirely, so
+#            players cannot see or run them. Changing this needs a server restart.
+# cooldown - Per individual command, in seconds. Counted separately for every player and
+#            never shared between players. 0 disables the cooldown.
+# delay    - Per individual command, in seconds. Countdown before the teleport completes.
+#            Only meaningful for commands that initiate a teleport; /tpaccept reuses the
+#            delay of the /tpa or /tphere request it accepts.
+commands:
+  # --- Class: RTP (/rtp) ---
+  rtp:
+    enable: true
+    cooldown: 15
+    delay: 5
+
+  # --- Class: player teleports (/tpa, /tphere, /tpaccept, /tpdeny) ---
+  player-teleport:
+    enable: true
+  tpa:
+    cooldown: 15
+    delay: 5
+  tphere:
+    cooldown: 15
+    delay: 5
+  tpaccept:
+    cooldown: 0
+  tpdeny:
+    cooldown: 0
+
+  # --- Class: homes (/home, /sethome, /homelist, /delhome) ---
+  home:
+    enable: true
+    cooldown: 0
+    delay: 3
+  sethome:
+    cooldown: 0
+  delhome:
+    cooldown: 0
+  homelist:
+    cooldown: 0
+
+rtp:
+  enabled: true
+  # Fallback search distance, used only when rtp.spiral.ring-zones is not configured.
+  min-radius: 2000
+  max-radius: 5000
+  # Overworld only: when true, /rtp will only accept locations with open sky above the player.
+  # When false, it falls back to the first safe non-liquid spot (caves or under trees).
+  overworld-surface-only: true
+  # Maximum blocks to scan downward from the surface when searching for a safe spot
+  max-scan-depth: 16
+  # Spiral coordinate generator settings
+  spiral:
+    # Average distance between spiral sample points in blocks
+    grid-spacing: 16
+    # Weighted ring zones. The generator picks a ring by weight and advances its own spiral index.
+    # If ring-zones is omitted, min-radius and max-radius are used as a single zone.
+    ring-zones:
+      near:
+        min-radius: 2000
+        max-radius: 3500
+        weight: 20
+      mid:
+        min-radius: 3500
+        max-radius: 5000
+        weight: 60
+      far:
+        min-radius: 5000
+        max-radius: 7500
+        weight: 20
+  # Persistent spatial memory grid. Cells marked unsafe are skipped without loading chunks.
+  spatial-memory:
+    # Cell size in blocks. Larger cells mean fewer records but coarser skips.
+    cell-size: 32
+    # Maximum number of cells kept in memory. Least-recently-used cells are evicted first
+    # and re-read from the database on demand, so this only trades memory for repeat
+    # lookups. Raise it if /rtp re-checks the same regions often.
+    max-entries: 50000
+  # Preload pool settings
+  pool:
+    # Target validated locations = base-size + online-players * size-multiplier
+    base-size: 12
+    size-multiplier: 2.0
+    # Maximum number of candidates validated per tick (a request *rate*, not a concurrency cap)
+    max-validations-per-tick: 2
+    # Maximum asynchronous chunk loads submitted per tick (also a request rate)
+    max-chunk-loads-per-tick: 2
+    # Hard cap on chunk loads allowed in flight at once. This is the real backpressure: the
+    # per-tick settings above only limit how fast requests are issued, and without this cap a
+    # slow terrain generation piles up an unbounded queue of pending chunk IO, which can
+    # exhaust the heap. Lower it if the server struggles.
+    max-in-flight-loads: 8
+    # How long a queued player waits when the pool is empty before receiving a failure message
+    player-wait-timeout-seconds: 15
+    # Maximum players that can be queued while waiting for the pool to refill
+    max-queued-players: 10
+  # Biomes to skip during Overworld searches (avoids expensive block checks in oceans/rivers)
+  biome-blacklist:
+    - OCEAN
+    - DEEP_OCEAN
+    - WARM_OCEAN
+    - LUKEWARM_OCEAN
+    - COLD_OCEAN
+    - FROZEN_OCEAN
+    - DEEP_WARM_OCEAN
+    - DEEP_LUKEWARM_OCEAN
+    - DEEP_COLD_OCEAN
+    - DEEP_FROZEN_OCEAN
+    - RIVER
+    - FROZEN_RIVER
+  # Whether teleporting onto liquid surfaces is allowed
+  allow-liquid: false
+  # Blocks considered unsafe to stand on
+  unsafe-blocks:
+    - LAVA
+    - CACTUS
+    - FIRE
+    - SOUL_FIRE
+    - MAGMA_BLOCK
+    - SWEET_BERRY_BUSH
+    - WITHER_ROSE
+  # Structure teleport settings
+  structure:
+    # DEPRECATED. /rtp structure is disabled by default and slated for removal.
+    # Set to true to re-enable the legacy behaviour.
+    enabled: false
+    # Maximum distance from the structure to look for a safe landing
+    max-safe-distance: 256
+
+# Home settings
+home:
+  # Maximum number of homes per player
+  max-homes: 5
+
+# TPA request settings
+tpa:
+  enabled: true
+  # How long a request remains valid (seconds)
+  timeout: 30
+
+# Global teleport presentation
+teleport:
+  # Show the on-screen title countdown while a delayed teleport is pending
+  show-title: true
+
+# Teleport visual and audio effects
+effects:
+  enabled: true

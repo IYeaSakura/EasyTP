@@ -1,0 +1,84 @@
+name: EasyTP
+version: '${project.version}'
+main: net.sakurain.mc.easytp.EasyTPPlugin
+api-version: '26.1.2'
+description: Lightweight random teleport and TPA plugin for PaperMC 26.1.2
+author: SakurainMC
+
+commands:
+  rtp:
+    description: Teleport to a random safe location
+    usage: /rtp
+    permission: easytp.command.rtp
+  tpa:
+    description: Request to teleport to another player
+    usage: /tpa <player>
+    permission: easytp.command.tpa
+  tphere:
+    description: Request another player to teleport to you
+    usage: /tphere <player>
+    permission: easytp.command.tphere
+  tpaccept:
+    description: Accept a pending teleport request
+    usage: /tpaccept
+    permission: easytp.command.tpaccept
+  tpdeny:
+    description: Deny a pending teleport request
+    usage: /tpdeny
+    permission: easytp.command.tpdeny
+    aliases: [tpdecline]
+  sethome:
+    description: Set a home location
+    usage: /sethome [name]
+    permission: easytp.command.sethome
+  home:
+    description: Teleport to a home
+    usage: /home [name]
+    permission: easytp.command.home
+  delhome:
+    description: Delete a home
+    usage: /delhome [name]
+    permission: easytp.command.delhome
+  homelist:
+    description: List your homes
+    usage: /homelist
+    permission: easytp.command.homelist
+  easytp:
+    description: EasyTP administration
+    usage: /easytp reload
+    permission: easytp.admin.reload
+
+permissions:
+  easytp.command.rtp:
+    description: Use /rtp
+    default: true
+  easytp.command.tpa:
+    description: Use /tpa
+    default: true
+  easytp.command.tphere:
+    description: Use /tphere
+    default: true
+  easytp.command.tpaccept:
+    description: Use /tpaccept
+    default: true
+  easytp.command.tpdeny:
+    description: Use /tpdeny
+    default: true
+  easytp.command.sethome:
+    description: Use /sethome
+    default: true
+  easytp.command.home:
+    description: Use /home
+    default: true
+  easytp.command.delhome:
+    description: Use /delhome
+    default: true
+  easytp.command.homelist:
+    description: Use /homelist
+    default: true
+  easytp.admin.bypass-cooldown:
+    description: Bypass teleport cooldowns
+    default: op
+  easytp.admin.reload:
+    description: Reload the EasyTP configuration
+    default: op
