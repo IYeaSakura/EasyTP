@@ -163,6 +163,31 @@ tpa:
 teleport:
   # Show the on-screen title countdown while a delayed teleport is pending
   show-title: true
+  # Allow teleports that move a player to a different dimension. When false, /home, /tpa,
+  # /tphere and teleporting from the /homelist GUI are refused when the destination is in
+  # another dimension, and the player is told why.
+  allow-cross-dimension: true
+
+# Per-command dimension whitelist.
+#
+# A command may only be used while the player stands in one of the listed dimensions.
+# Valid values: OVERWORLD, NETHER, THE_END
+#
+# A missing or empty list means "no restriction" (every dimension is allowed), which is the
+# default. To stop a command entirely, switch off its command class under `commands` instead.
+#
+# Note this gates where a command is *used*, not where it teleports to — use
+# `teleport.allow-cross-dimension` for the latter.
+dimensions:
+  rtp: [OVERWORLD, NETHER, THE_END]
+  home: [OVERWORLD, NETHER, THE_END]
+  sethome: [OVERWORLD, NETHER, THE_END]
+  delhome: [OVERWORLD, NETHER, THE_END]
+  homelist: [OVERWORLD, NETHER, THE_END]
+  tpa: [OVERWORLD, NETHER, THE_END]
+  tphere: [OVERWORLD, NETHER, THE_END]
+  tpaccept: [OVERWORLD, NETHER, THE_END]
+  tpdeny: [OVERWORLD, NETHER, THE_END]
 
 # Teleport visual and audio effects
 effects:

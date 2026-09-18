@@ -42,7 +42,7 @@ A lightweight teleport plugin for PaperMC 26.1.2 providing random teleport, TPA 
 - **/home [name]**: Teleport to a saved home.
 - **/delhome [name]**: Delete a saved home.
 - **/homelist**: Open a paginated chest GUI listing every home.
-- **Home GUI**: Left-click to teleport, shift + right-click to delete, right-click to edit; the edit menu can reset a home to your current position or rename it through chat.
+- **Home GUI**: Left-click to teleport, shift + right-click to delete, right-click to edit; the edit menu can reset a home to your current position or rename it through chat. Icons are picked from the home's dimension (grass block, netherrack, end stone).
 - **Multiple Homes**: Configurable maximum number of homes per player.
 - **Persistent Storage**: Homes are stored in a built-in SQLite database (`plugins/EasyTP/data.db`). An existing `homes.yml` is imported on first start and renamed to `homes.yml.migrated`.
 
@@ -67,6 +67,21 @@ A lightweight teleport plugin for PaperMC 26.1.2 providing random teleport, TPA 
   Disabling a class **unregisters** its commands, so players cannot see or run them. Changing a
   switch requires a server restart.
 - **Admin Bypass**: `easytp.admin.bypass-cooldown` allows operators to skip cooldowns.
+
+### Dimension Control
+
+Two independent settings decide where teleports may happen — one is about **where a command may be
+used**, the other about **where it may send the player**:
+
+- **Per-Command Whitelist**: `dimensions.<command>` limits a command to a set of dimensions. Every
+  command has its own list (`rtp`, `home`, `sethome`, `delhome`, `homelist`, `tpa`, `tphere`,
+  `tpaccept`, `tpdeny`). A missing or empty list means **no restriction**, which is the default.
+- **Cross-Dimension Toggle**: with `teleport.allow-cross-dimension: false`, any teleport that would
+  move a player into another dimension is refused and both dimensions are named in the message. This
+  covers `/home`, `/tpa`, `/tphere`, accepting a request, and teleporting from the `/homelist` GUI.
+  `/rtp` is unaffected — it only ever searches the player's current world.
+- **Dimension-Aware Home Icons**: `/homelist` renders each home as a grass block (Overworld),
+  netherrack (Nether) or end stone (The End), and the item lore names the dimension.
 
 ### Localization
 - **Language Files**: Player-facing text lives in `lang/messages_en.yml` and `lang/messages_zh.yml`, selected by the `language` setting.
@@ -272,6 +287,9 @@ the generated `plugins/EasyTP/config.yml` mirrors it. Key settings:
 | `home.max-homes` | `5` | Homes per player |
 | `tpa.enabled` | `true` | Master switch for TPA requests |
 | `tpa.timeout` | `30` | Seconds before a pending request expires |
+| `teleport.show-title` | `true` | On-screen title countdown |
+| `teleport.allow-cross-dimension` | `true` | Allow teleports that move a player to another dimension |
+| `dimensions.<command>` | all dimensions | Dimensions a command may be used from |
 | `effects.enabled` | `true` | Teleport particles and sounds |
 | `debug.enabled` | `false` | Verbose `[DEBUG]` console diagnostics |
 | `debug.summary-interval-seconds` | `30` | How often the RTP pipeline summary is printed |

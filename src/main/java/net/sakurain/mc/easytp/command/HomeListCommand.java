@@ -28,6 +28,9 @@ public class HomeListCommand implements CommandExecutor {
             MessageUtil.send(sender, "player-only");
             return true;
         }
+        if (!teleportManager.checkDimension(player, "homelist")) {
+            return true;
+        }
         if (!teleportManager.checkCooldown(player, "homelist")) {
             return true;
         }

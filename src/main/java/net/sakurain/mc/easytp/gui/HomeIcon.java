@@ -2,10 +2,10 @@ package net.sakurain.mc.easytp.gui;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.sakurain.mc.easytp.EasyTPPlugin;
 import net.sakurain.mc.easytp.storage.HomeData;
 import net.sakurain.mc.easytp.util.MessageUtil;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -14,6 +14,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,8 +43,9 @@ public final class HomeIcon {
      */
     @NotNull
     public static ItemStack createHomeIcon(@NotNull EasyTPPlugin plugin, @NotNull HomeData home) {
-        Material material = resolveMaterial(home.worldName());
-        ItemStack item = new ItemStack(material);
+        World world = Bukkit.getWorld(home.worldName());
+        // The icon material is the dimension cue: grass block, netherrack or end stone.
+        ItemStack item = new ItemStack(resolveMaterial(world));
         ItemMeta meta = item.getItemMeta();
 
         Component name = MessageUtil.parseNoPrefix("home-gui-icon-name",
@@ -51,13 +53,26 @@ public final class HomeIcon {
         meta.displayName(name.decoration(TextDecoration.ITALIC, false));
 
         List<Component> lore = new ArrayList<>();
-        lore.add(MiniMessage.miniMessage().deserialize("<gray>World: <yellow>" + home.worldName()).decoration(TextDecoration.ITALIC, false));
-        lore.add(MiniMessage.miniMessage().deserialize(String.format("<gray>Loc: <yellow>%.0f %.0f %.0f", home.x(), home.y(), home.z())).decoration(TextDecoration.ITALIC, false));
+        lore.add(MessageUtil.parseNoPrefix("home-gui-icon-world",
+                net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("world", home.worldName())));
+        lore.add(MessageUtil.parseNoPrefix("home-gui-icon-location",
+                MessageUtil.coord("x", home.x()),
+                MessageUtil.coord("y", home.y()),
+                MessageUtil.coord("z", home.z())));
+        // The stored home only knows its world name, so the dimension is only resolvable while
+        // that world is loaded.
+        if (world == null) {
+            lore.add(MessageUtil.parseNoPrefix("home-gui-icon-dimension-unknown"));
+        } else {
+            lore.add(MessageUtil.parseNoPrefix("home-gui-icon-dimension",
+                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.component(
+                            "dimension", MessageUtil.dimensionName(world.getEnvironment()))));
+        }
         lore.add(Component.empty());
         lore.add(MessageUtil.parseNoPrefix("home-gui-icon-teleport").decoration(TextDecoration.ITALIC, false));
         lore.add(MessageUtil.parseNoPrefix("home-gui-icon-delete").decoration(TextDecoration.ITALIC, false));
         lore.add(MessageUtil.parseNoPrefix("home-gui-icon-edit").decoration(TextDecoration.ITALIC, false));
-        meta.lore(lore);
+        meta.lore(lore.stream().map(line -> line.decoration(TextDecoration.ITALIC, false)).toList());
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(getKey(plugin, KEY_HOME_NAME), PersistentDataType.STRING, home.name());
@@ -148,10 +163,17 @@ public final class HomeIcon {
         return new NamespacedKey(plugin, key);
     }
 
+    /**
+     * Pick the icon material that stands for a home's dimension: grass block for the Overworld,
+     * netherrack for the Nether, end stone for The End.
+     *
+     * @param world the home's world, or null when that world is not loaded
+     */
     @NotNull
-    private static Material resolveMaterial(@NotNull String worldName) {
-        World world = org.bukkit.Bukkit.getWorld(worldName);
+    private static Material resolveMaterial(@Nullable World world) {
         if (world == null) {
+            // A stored home only knows its world name, so the dimension cannot be resolved while
+            // that world is unloaded. Fall back to a neutral icon rather than guessing.
             return Material.PLAYER_HEAD;
         }
         return switch (world.getEnvironment()) {

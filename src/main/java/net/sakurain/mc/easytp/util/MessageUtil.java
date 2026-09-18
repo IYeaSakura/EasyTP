@@ -5,6 +5,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.sakurain.mc.easytp.EasyTPPlugin;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -172,5 +173,29 @@ public final class MessageUtil {
     @NotNull
     public static TagResolver.Single coord(@NotNull String name, double value) {
         return Placeholder.unparsed(name, String.valueOf(Math.round(value)));
+    }
+
+    /**
+     * Localized display name for a world environment, as a component so it can be embedded in
+     * another message with {@link Placeholder#component(String, Component)}.
+     *
+     * <p>The values in the language files are deliberately plain text (no colour tags): the
+     * surrounding message template decides how the name is styled.</p>
+     *
+     * @param environment the world environment
+     * @return the localized dimension name, or the enum name for custom environments
+     */
+    @NotNull
+    public static Component dimensionName(@NotNull World.Environment environment) {
+        String key = switch (environment) {
+            case NORMAL -> "dimension-overworld";
+            case NETHER -> "dimension-nether";
+            case THE_END -> "dimension-the-end";
+            default -> null;
+        };
+        if (key == null) {
+            return Component.text(environment.name());
+        }
+        return parseNoPrefix(key);
     }
 }

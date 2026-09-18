@@ -3,7 +3,6 @@ package net.sakurain.mc.easytp.manager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.title.Title;
@@ -46,8 +45,6 @@ public class TeleportManager {
     private final Map<UUID, TeleportRequest> pendingRequests = new HashMap<>();
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
 
-    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
-
     public TeleportManager(@NotNull EasyTPPlugin plugin, @NotNull DatabaseManager databaseManager, @NotNull RtpEngine rtpEngine) {
         this.plugin = plugin;
         this.homeRepository = new HomeRepository(databaseManager);
@@ -69,6 +66,9 @@ public class TeleportManager {
     public void setHome(@NotNull Player player, @NotNull String name) {
         if (!isValidHomeName(name)) {
             MessageUtil.send(player, "home-invalid-name");
+            return;
+        }
+        if (!checkDimension(player, "sethome")) {
             return;
         }
         if (!checkCooldown(player, "sethome")) {
@@ -124,6 +124,12 @@ public class TeleportManager {
             return;
         }
 
+        if (!checkDimension(player, "home")) {
+            return;
+        }
+        if (!checkCrossDimension(player, player.getWorld(), location.getWorld())) {
+            return;
+        }
         if (!checkCooldown(player, "home")) {
             return;
         }
@@ -134,6 +140,9 @@ public class TeleportManager {
     }
 
     public void deleteHome(@NotNull Player player, @NotNull String name) {
+        if (!checkDimension(player, "delhome")) {
+            return;
+        }
         if (!checkCooldown(player, "delhome")) {
             return;
         }
@@ -302,6 +311,82 @@ public class TeleportManager {
 
     // endregion
 
+    // region Dimension policy
+
+    /** Every dimension EasyTP understands, used when a command has no whitelist configured. */
+    private static final Set<World.Environment> ALL_DIMENSIONS = Collections.unmodifiableSet(
+            EnumSet.of(World.Environment.NORMAL, World.Environment.NETHER, World.Environment.THE_END));
+
+    /**
+     * Read {@code dimensions.<command>} and resolve it to a set of environments.
+     *
+     * <p>A missing or empty list means "no restriction", and so does a list whose entries are all
+     * unrecognised — locking a command out of every dimension because of a typo would be a nasty
+     * surprise, so unknown entries are reported and ignored instead.</p>
+     */
+    @NotNull
+    private Set<World.Environment> readCommandDimensions(@NotNull String commandKey) {
+        List<String> configured = plugin.getConfig().getStringList("dimensions." + commandKey);
+        if (configured.isEmpty()) {
+            return ALL_DIMENSIONS;
+        }
+        EnumSet<World.Environment> allowed = EnumSet.noneOf(World.Environment.class);
+        for (String raw : configured) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            try {
+                allowed.add(World.Environment.valueOf(raw.trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Unknown dimension '" + raw + "' in dimensions." + commandKey);
+            }
+        }
+        return allowed.isEmpty() ? ALL_DIMENSIONS : allowed;
+    }
+
+    /**
+     * Check that {@code commandKey} may be used from the dimension the player is standing in.
+     *
+     * @return {@code true} when the command may proceed
+     */
+    public boolean checkDimension(@NotNull Player player, @NotNull String commandKey) {
+        World.Environment current = player.getWorld().getEnvironment();
+        if (readCommandDimensions(commandKey).contains(current)) {
+            return true;
+        }
+        DebugLog.log("dimension", "%s denied '%s' in %s (allowed: %s)",
+                player.getName(), commandKey, current, readCommandDimensions(commandKey));
+        MessageUtil.send(player, "dimension-not-allowed",
+                Placeholder.component("dimension", MessageUtil.dimensionName(current)));
+        return false;
+    }
+
+    /**
+     * Check that a teleport may cross between two worlds, honouring
+     * {@code teleport.allow-cross-dimension}.
+     *
+     * @param recipient who receives the denial message
+     * @param from      the world being left, or null if unknown
+     * @param to        the destination world, or null if unknown
+     * @return {@code true} when the teleport may proceed
+     */
+    public boolean checkCrossDimension(@NotNull Player recipient, @Nullable World from, @Nullable World to) {
+        if (plugin.getConfig().getBoolean("teleport.allow-cross-dimension", true)) {
+            return true;
+        }
+        if (from == null || to == null || from.getUID().equals(to.getUID())) {
+            return true;
+        }
+        DebugLog.log("dimension", "%s blocked a cross-dimension teleport %s -> %s",
+                recipient.getName(), from.getEnvironment(), to.getEnvironment());
+        MessageUtil.send(recipient, "cross-dimension-denied",
+                Placeholder.component("from", MessageUtil.dimensionName(from.getEnvironment())),
+                Placeholder.component("to", MessageUtil.dimensionName(to.getEnvironment())));
+        return false;
+    }
+
+    // endregion
+
     // region Random Teleport
 
     public void randomTeleport(@NotNull Player player) {
@@ -311,6 +396,9 @@ public class TeleportManager {
     private void randomTeleportInternal(@NotNull Player player, @NotNull String cooldownKey) {
         if (!plugin.getConfig().getBoolean("rtp.enabled", true)) {
             MessageUtil.send(player, "feature-disabled");
+            return;
+        }
+        if (!checkDimension(player, cooldownKey)) {
             return;
         }
         if (!checkCooldown(player, cooldownKey)) {
@@ -352,6 +440,9 @@ public class TeleportManager {
         }
         if (!plugin.getConfig().getBoolean("rtp.enabled", true)) {
             MessageUtil.send(player, "feature-disabled");
+            return;
+        }
+        if (!checkDimension(player, "rtp")) {
             return;
         }
         if (!checkCooldown(player, "rtp")) {
@@ -446,6 +537,16 @@ public class TeleportManager {
             return;
         }
         String commandKey = here ? "tphere" : "tpa";
+        if (!checkDimension(requester, commandKey)) {
+            return;
+        }
+        // Whoever ends up moving must not cross into another dimension when that is disabled:
+        // /tpa moves the requester to the target, /tphere moves the target to the requester.
+        World origin = here ? target.getWorld() : requester.getWorld();
+        World destination = here ? requester.getWorld() : target.getWorld();
+        if (!checkCrossDimension(requester, origin, destination)) {
+            return;
+        }
         if (!checkCooldown(requester, commandKey)) {
             return;
         }
@@ -476,12 +577,12 @@ public class TeleportManager {
     }
 
     private void sendRequestMessage(@NotNull Player target, @NotNull String requesterName, boolean here) {
-        Component accept = MINI_MESSAGE.deserialize("<green><bold>[Accept]")
+        Component accept = MessageUtil.parseNoPrefix("tpa-button-accept")
                 .clickEvent(ClickEvent.runCommand("/tpaccept"))
-                .hoverEvent(HoverEvent.showText(MINI_MESSAGE.deserialize("<green>Click to accept the teleport request")));
-        Component deny = MINI_MESSAGE.deserialize("<red><bold>[Deny]")
+                .hoverEvent(HoverEvent.showText(MessageUtil.parseNoPrefix("tpa-button-accept-hover")));
+        Component deny = MessageUtil.parseNoPrefix("tpa-button-deny")
                 .clickEvent(ClickEvent.runCommand("/tpdeny"))
-                .hoverEvent(HoverEvent.showText(MINI_MESSAGE.deserialize("<red>Click to deny the teleport request")));
+                .hoverEvent(HoverEvent.showText(MessageUtil.parseNoPrefix("tpa-button-deny-hover")));
 
         Component message = MessageUtil.parse(here ? "request-received-here" : "request-received",
                 Placeholder.unparsed("player", requesterName),
@@ -491,38 +592,54 @@ public class TeleportManager {
     }
 
     public void acceptRequest(@NotNull Player target) {
-        // Checked before the request is consumed, otherwise a cooldown rejection would
-        // silently discard the pending request.
+        if (!checkDimension(target, "tpaccept")) {
+            return;
+        }
+        // Both checks run before the request is consumed, otherwise a rejection would silently
+        // discard the pending request.
         if (!checkCooldown(target, "tpaccept")) {
             return;
         }
-        TeleportRequest request = pendingRequests.remove(target.getUniqueId());
+        TeleportRequest request = pendingRequests.get(target.getUniqueId());
         if (request == null) {
             MessageUtil.send(target, "no-pending-request");
             return;
         }
         if (System.currentTimeMillis() > request.expiry()) {
+            pendingRequests.remove(target.getUniqueId());
             MessageUtil.send(target, "request-expired");
             return;
         }
 
         Player requester = Bukkit.getPlayer(request.requesterId());
         if (requester == null) {
+            pendingRequests.remove(target.getUniqueId());
             MessageUtil.send(target, "request-player-offline");
             return;
         }
 
+        Player toTeleport = request.here() ? target : requester;
+        Player destinationPlayer = request.here() ? requester : target;
+        // Re-checked on accept as well: either player may have changed dimension since the request
+        // was sent. The request is deliberately left pending so they can retry after moving.
+        if (!checkCrossDimension(target, toTeleport.getWorld(), destinationPlayer.getWorld())) {
+            return;
+        }
+
+        pendingRequests.remove(target.getUniqueId());
         MessageUtil.send(target, "request-accepted", requester.getName());
         MessageUtil.send(requester, "request-accepted-notify", target.getName());
 
-        Player toTeleport = request.here() ? target : requester;
-        Player destination = request.here() ? requester : target;
         String commandKey = request.here() ? "tphere" : "tpa";
-        startDelayedTeleport(toTeleport, destination.getLocation(), commandKey, () -> MessageUtil.send(toTeleport, "teleport-success"));
+        startDelayedTeleport(toTeleport, destinationPlayer.getLocation(), commandKey,
+                () -> MessageUtil.send(toTeleport, "teleport-success"));
         setCooldown(target, "tpaccept");
     }
 
     public void denyRequest(@NotNull Player target) {
+        if (!checkDimension(target, "tpdeny")) {
+            return;
+        }
         if (!checkCooldown(target, "tpdeny")) {
             return;
         }

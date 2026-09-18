@@ -42,7 +42,7 @@
 - **/home [name]**：传送至已保存的家。
 - **/delhome [name]**：删除已保存的家。
 - **/homelist**：打开分页箱子 GUI 列出所有家。
-- **家 GUI**：左键传送，Shift + 右键删除，右键编辑；编辑菜单可将家重置为当前位置，或通过聊天重命名。
+- **家 GUI**：左键传送，Shift + 右键删除，右键编辑；编辑菜单可将家重置为当前位置，或通过聊天重命名。图标按家所在维度选择（草方块、地狱岩、末地石）。
 - **多个家**：可配置每位玩家最多可设置的家数量。
 - **持久化存储**：家存储在内置 SQLite 数据库（`plugins/EasyTP/data.db`）中。首次启动会导入已有的 `homes.yml` 并重命名为 `homes.yml.migrated`。
 
@@ -66,6 +66,19 @@
 
   关闭某一类会**注销**该类命令，玩家无法看到或执行。修改开关需要重启服务器。
 - **管理员绕过**：`easytp.admin.bypass-cooldown` 允许管理员跳过冷却。
+
+### 维度控制
+
+有两个互相独立的设置，一个管**命令能在哪使用**，另一个管**能把玩家送到哪**：
+
+- **按命令白名单**：`dimensions.<command>` 把命令限制在指定维度内。每个命令都有自己的列表
+  （`rtp`、`home`、`sethome`、`delhome`、`homelist`、`tpa`、`tphere`、`tpaccept`、`tpdeny`）。
+  列表缺失或为空表示**不做限制**，这也是默认行为。
+- **跨维度开关**：将 `teleport.allow-cross-dimension` 设为 `false` 后，任何会把玩家送到其他维度的
+  传送都会被拒绝，并在提示中说明来源与目标维度。覆盖 `/home`、`/tpa`、`/tphere`、同意请求，
+  以及从 `/homelist` GUI 传送。`/rtp` 不受影响——它只在玩家当前世界内搜索。
+- **按维度区分家的图标**：`/homelist` 中主世界的家显示为草方块、下界为地狱岩、末地为末地石，
+  物品 lore 中也会标注维度。
 
 ### 本地化
 - **语言文件**：玩家可见文本位于 `lang/messages_en.yml` 和 `lang/messages_zh.yml`，由 `language` 设置选择。
@@ -270,6 +283,9 @@ mvn clean package
 | `home.max-homes` | `5` | 每位玩家最大家数量 |
 | `tpa.enabled` | `true` | TPA 请求总开关 |
 | `tpa.timeout` | `30` | 待处理请求的过期秒数 |
+| `teleport.show-title` | `true` | 屏幕标题倒计时 |
+| `teleport.allow-cross-dimension` | `true` | 是否允许把玩家送到其他维度 |
+| `dimensions.<command>` | 全部维度 | 该命令允许被使用的维度 |
 | `effects.enabled` | `true` | 传送粒子与音效 |
 | `debug.enabled` | `false` | 输出 `[DEBUG]` 详细控制台诊断 |
 | `debug.summary-interval-seconds` | `30` | RTP 流水线汇总的打印间隔 |
