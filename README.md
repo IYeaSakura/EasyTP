@@ -4,6 +4,7 @@
 
 [![PaperMC](https://img.shields.io/badge/PaperMC-26.1.2--26.2-004ee9?logo=minecraft&logoColor=white)](https://papermc.io/)
 [![Purpur](https://img.shields.io/badge/Purpur-26.1.2--26.2-9b59b6)](https://purpurmc.org/)
+[![Folia](https://img.shields.io/badge/Folia-26.2-ff9800)](https://papermc.io/software/folia)
 [![Java](https://img.shields.io/badge/Java-25-e76f00?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Maven](https://img.shields.io/badge/Maven-3.9+-C71A36?logo=apache-maven)](https://maven.apache.org/)
 [![Adventure](https://img.shields.io/badge/Adventure-MiniMessage-00bfa5?logo=bookstack)](https://docs.advntr.dev/minimessage/)
@@ -11,7 +12,7 @@
 
 </div>
 
-A lightweight teleport plugin for PaperMC and Purpur 26.1.2 – 26.2 providing random teleport, TPA requests, and multi-home management. All teleports use a configurable delayed countdown with movement and damage cancellation, particle effects, and MiniMessage-formatted chat output.
+A lightweight teleport plugin for PaperMC, Purpur and Folia 26.1.2 – 26.2 providing random teleport, TPA requests, and multi-home management. All teleports use a configurable delayed countdown with movement and damage cancellation, particle effects, and MiniMessage-formatted chat output.
 
 [Features](#features) | [Tech Stack](#tech-stack) | [Project Structure](#project-structure) | [Getting Started](#getting-started) | [Development](#development) | [Build & Deployment](#build--deployment) | [Configuration](#configuration) | [Commands & Permissions](#commands--permissions) | [Core Design](#core-design) | [Troubleshooting](#troubleshooting) | [Contributing](#contributing) | [License](#license)
 
@@ -116,7 +117,7 @@ GUI, even though you can still browse the list.
 
 | Category | Technology | Version |
 |----------|------------|---------|
-| Platform | PaperMC / Purpur | 26.1.2 – 26.2 |
+| Platform | PaperMC / Purpur / Folia | 26.1.2 – 26.2 |
 | Language | Java | 25 |
 | Build Tool | Maven | 3.9+ |
 | Core API | `io.papermc.paper:paper-api` | 26.1.2.build.72-stable (pinned) |
@@ -126,9 +127,9 @@ GUI, even though you can still browse the list.
 
 | Server | Status | Notes |
 |--------|--------|-------|
-| **PaperMC 26.1.2 – 26.2** | ✅ Supported | `api-version: '26.1.2'` means "26.1.2 or newer", so one JAR runs on the whole supported 26.x line. |
-| **PurpurMC 26.1.2 – 26.2** | ✅ Supported | Purpur is a drop-in Paper replacement. EasyTP imports nothing from `org.purpurmc` and uses no NMS, so it behaves identically. |
-| **Folia** | ❌ Not supported | Folia refuses to load the plugin (`folia-supported` is not declared). Making it work requires migrating every scheduler call to the region schedulers — see [Folia Compatibility](#folia-compatibility) below. |
+| **PaperMC 26.1.2 – 26.2** | Supported | `api-version: '26.1.2'` means "26.1.2 or newer", so one JAR runs on the whole supported 26.x line. |
+| **PurpurMC 26.1.2 – 26.2** | Supported | Purpur is a drop-in Paper replacement. EasyTP imports nothing from `org.purpurmc` and uses no NMS, so it behaves identically. |
+| **Folia** | Supported | Declares `folia-supported: true` and uses only the region-aware schedulers that Paper and Folia share. See [Folia Support](#folia-support). |
 
 The build compiles against the **oldest** API version it claims (`26.1.2`), which guarantees it
 cannot accidentally use API that only exists in a newer release. It is additionally verified to
@@ -180,7 +181,7 @@ EasyTP/
 
 ### Prerequisites
 
-- **Server**: PaperMC or Purpur 26.1.2 – 26.2
+- **Server**: PaperMC, Purpur or Folia 26.1.2 – 26.2
 - **Java**: OpenJDK 25 or compatible
 - **Build Tool**: Maven 3.9+ (only if building from source)
 
@@ -419,38 +420,57 @@ loads are capped rather than merely rate-limited.
 
 ---
 
-## Folia Compatibility
+## Folia Support
 
-**EasyTP does not currently support Folia.** It does not declare `folia-supported: true`, so Folia
-refuses to load the plugin cleanly instead of loading it and failing at runtime.
+EasyTP runs unchanged on Paper, Purpur and Folia. It declares `folia-supported: true` and never
+touches the legacy `BukkitScheduler`, which throws on Folia because there is no single main thread
+to run work on.
 
-Folia removes the main thread: each world is split into independently ticking regions, and server
-API may only be touched from the thread that owns the relevant region. EasyTP is written for a
-single main thread, and these usages are not valid on Folia:
+### Threading model
 
-| Area | Blocking usage |
-|------|----------------|
-| Scheduling | `Bukkit.getScheduler()` in 5 places, plus the countdown task built on `BukkitRunnable` |
-| Chunk access | Synchronous `world.getChunkAt(...)` in 2 places |
-| Region affinity | `spawnParticle`, `openInventory`, `closeInventory`, `showTitle` and `playSound` must run on the thread owning the player |
-| Async safety | `world.getWorldBorder()` is read from the RTP validation thread |
+Folia splits every world into independently ticking regions, and server API may only be touched from
+the thread that owns the relevant region. The plugin is therefore written against the four
+schedulers that Paper and Folia share:
 
-The migration is **mechanical rather than architectural**: the four portable schedulers —
-`getGlobalRegionScheduler`, `getRegionScheduler`, `getAsyncScheduler` and `Entity#getScheduler()` —
-already ship in the `paper-api` this plugin compiles against, so one JAR can serve Paper, Purpur
-**and** Folia with no extra dependency and no separate build.
+| Scheduler | Used for |
+|-----------|----------|
+| `AsyncScheduler` | Chunk validation, spatial-memory probing and storage flushes — none of which touch server API |
+| `GlobalRegionScheduler` | Pool bookkeeping and shared plugin state that belongs to no particular location |
+| `RegionScheduler` | Work tied to a specific location: arrival effects, structure lookup, synchronous column scans |
+| `Entity#getScheduler()` | Anything that touches a player: countdown ticks, chat, titles, GUI, teleport completion |
 
-### Recommendation: one codebase, not a separate Folia edition
+On Paper these land on the main thread and the async pool, so a single code path serves both
+platforms. There is no separate Folia build and no runtime platform check.
 
-Comparable plugins take exactly this route — [LeafRTP](https://www.spigotmc.org/resources/leafrtp-paper-folia-velocity.94812/)
-ships a single artifact for Paper, Folia *and* Velocity, and PaperMC maintains an official
-[Supporting Paper and Folia](https://docs.papermc.io/paper/dev/folia-support/) guide for it.
-`RtpScheduler` was already written as the seam for this change, so the architecture is prepared.
+### Region-boundary rules
 
-One caveat worth planning for: Folia is genuinely *faster* at random teleport, because region
-threads parallelise a search that Paper serialises onto one thread. But `/rtp`'s habit of preloading
-chunks thousands of blocks away across dimensions is far more expensive under regionisation — on
-Folia, shrink `rtp.spiral.ring-zones`. That is a configuration concern, not a reason to fork.
+Three invariants keep the plugin correct under regionisation.
+
+- **A chunk may only be read by the thread that owns its region.** `/rtp` deliberately targets
+  chunks thousands of blocks away, so candidate validation goes through `getChunkAtAsync`. The two
+  remaining synchronous reads are guarded by `Bukkit.isOwnedByCurrentRegion(...)`; when the guard
+  fails the hot-pool entry is skipped and the ordinary asynchronous path takes over, costing one
+  extra chunk load rather than a crash.
+- **Effects and completion callbacks belong to different regions than the teleport itself.** An
+  arrival plays its particles on the destination's region and runs its callback on the arriving
+  player's region, because on Folia those are almost never the same thread.
+- **The countdown rides the player.** It is scheduled through the player's entity scheduler, so it
+  follows them between regions and is retired automatically when they disconnect — which replaces
+  the old "is the player still online" check with the platform's own lifecycle signal.
+
+### Tuning the search for a regionised server
+
+Regionisation makes the RTP search cheaper in one respect and more expensive in another. Region
+threads parallelise validation that Paper serialises onto a single thread, but `/rtp` still reads
+chunks far outside any player's region, and each of those reads is charged to the owning region. The
+existing limits cover this:
+
+| Setting | Effect |
+|---------|--------|
+| `rtp.pool.max-in-flight-loads` | Caps how many chunk loads may be outstanding at once |
+| `rtp.spiral.ring-zones` | Sets how far away candidates are drawn, and therefore how many cold regions the search touches |
+
+On a Folia server, prefer a smaller `ring-zones` range than you would use on Paper.
 
 ---
 

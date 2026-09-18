@@ -229,7 +229,7 @@ public class RtpEngine {
         pendingCallbacks.put(player.getUniqueId(), new RtpCallback(onSuccess, onFailure));
         scheduler.runAsync(() -> refillWorld(world, Math.max(4, params.poolBaseSize() / 2)));
 
-        scheduler.runLaterSync(() -> {
+        scheduler.runLaterGlobal(() -> {
             if (pendingCallbacks.remove(player.getUniqueId()) != null) {
                 pool.removePlayer(player.getUniqueId());
                 statWaitTimeouts.increment();
@@ -328,7 +328,7 @@ public class RtpEngine {
                     // includeBiome=true is required for biome checks.
                     ChunkSnapshot snapshot = chunk.getChunkSnapshot(true, true, false);
                     Location safe = evaluateSnapshot(world, snapshot, blockX, blockZ);
-                    scheduler.runSync(() -> {
+                    scheduler.runGlobal(() -> {
                         if (safe != null) {
                             spatialMemory.markSafe(world, blockX, blockZ);
                             onSuccess.accept(safe);
@@ -338,11 +338,26 @@ public class RtpEngine {
                         }
                     });
                 },
-                () -> scheduler.runSync(onFailure));
+                () -> scheduler.runGlobal(onFailure));
     }
 
+    /**
+     * Re-check a pooled location against the live chunk before handing it to a player.
+     *
+     * <p>Reading a chunk is only legal on the thread that owns its region, and on Folia the pooled
+     * location is by definition far from the player, so this thread almost never owns it. Returning
+     * {@code null} in that case is safe: the caller falls back to the cold path, which loads the
+     * chunk asynchronously and re-evaluates it there. On Paper the check is always true from the
+     * main thread, so behaviour is unchanged.</p>
+     */
     @Nullable
     private Location fastRevalidate(@NotNull World world, int x, int y, int z) {
+        Location location = new Location(world, x, y, z);
+        if (!Bukkit.isOwnedByCurrentRegion(location)) {
+            DebugLog.log("rtp", "skipping hot-pool revalidation of %s: region not owned by this thread",
+                    formatLocation(location));
+            return null;
+        }
         Chunk chunk = world.getChunkAt(x >> 4, z >> 4);
         ChunkSnapshot snapshot = chunk.getChunkSnapshot(true, true, false);
         return evaluateSnapshot(world, snapshot, x, z);
@@ -497,7 +512,7 @@ public class RtpEngine {
                     // includeBiome=true is required for biome checks.
                     ChunkSnapshot snapshot = chunk.getChunkSnapshot(true, true, false);
                     Location safe = evaluateSnapshot(world, snapshot, candidate.x(), candidate.z());
-                    scheduler.runSync(() -> {
+                    scheduler.runGlobal(() -> {
                         if (safe != null) {
                             spatialMemory.markSafe(world, candidate.x(), candidate.z());
                             pool.addValidated(new RtpLocation(world.getName(), safe.getX(), safe.getY(), safe.getZ()), chunk.isLoaded());
@@ -590,6 +605,13 @@ public class RtpEngine {
         });
     }
 
+    /**
+     * Hand a freshly validated location to the next queued player.
+     *
+     * <p>This runs from the chunk-load callback, which is an async thread. The delivery itself
+     * touches the player — chat messages, the countdown, the teleport — so on Folia it must be
+     * scheduled onto the player's own region rather than run inline.</p>
+     */
     private void fulfillWaitingPlayer(@NotNull RtpPool pool, @NotNull World world) {
         RtpPool.QueuedPlayer queued = pool.pollWaitingPlayer();
         if (queued == null) {
@@ -598,6 +620,15 @@ public class RtpEngine {
         RtpCallback callback = pendingCallbacks.remove(queued.playerId());
         Player player = Bukkit.getPlayer(queued.playerId());
         if (callback == null || player == null || !player.isOnline()) {
+            return;
+        }
+        player.getScheduler().run(plugin, scheduled -> deliverToWaitingPlayer(pool, world, queued, callback, player), null);
+    }
+
+    private void deliverToWaitingPlayer(@NotNull RtpPool pool, @NotNull World world,
+                                        @NotNull RtpPool.QueuedPlayer queued, @NotNull RtpCallback callback,
+                                        @NotNull Player player) {
+        if (!player.isOnline()) {
             return;
         }
         Location hot = tryHotPool(world, pool);
@@ -789,12 +820,22 @@ public class RtpEngine {
     // region Sync helpers for structure RTP
 
     /**
-     * Synchronously evaluates a single column. Intended for main-thread callers (structure RTP).
+     * Synchronously evaluates a single column.
+     *
+     * <p>Intended for callers already running on the thread that owns the target region — structure
+     * RTP schedules itself there first. Reading a chunk from a thread that does not own its region
+     * is illegal on Folia, so this refuses rather than risking a crash; the caller reports a normal
+     * search failure.</p>
      */
     @Nullable
     public Location findSafeSpotSync(@NotNull World world, int x, int z) {
         int chunkX = x >> 4;
         int chunkZ = z >> 4;
+        if (!Bukkit.isOwnedByCurrentRegion(world, chunkX, chunkZ)) {
+            DebugLog.log("rtp", "refusing synchronous column scan at %s[%d, %d]: region not owned by this thread",
+                    world.getName(), x, z);
+            return null;
+        }
         Chunk chunk = world.getChunkAt(chunkX, chunkZ);
         ChunkSnapshot snapshot = chunk.getChunkSnapshot(true, true, false);
         return evaluateSnapshot(world, snapshot, x, z);

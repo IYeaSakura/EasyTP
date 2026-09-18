@@ -84,7 +84,10 @@ public class EasyTPPlugin extends JavaPlugin {
         if (databaseManager != null) {
             databaseManager.close();
         }
-        getServer().getScheduler().cancelTasks(this);
+        // Cancel on both schedulers this plugin uses. Entity-scheduler tasks are cancelled
+        // automatically when their entity goes away, so they need no explicit cleanup here.
+        getServer().getGlobalRegionScheduler().cancelTasks(this);
+        getServer().getAsyncScheduler().cancelTasks(this);
         getLogger().info("EasyTP disabled!");
     }
 

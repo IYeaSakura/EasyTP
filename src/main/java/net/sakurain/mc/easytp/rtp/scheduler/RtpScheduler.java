@@ -4,45 +4,54 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Thread scheduler abstraction used by the RTP engine.
+ * Threading abstraction used by the RTP engine.
  *
- * <p>A Paper implementation routes work through BukkitScheduler. A Folia
- * implementation could be added later by dispatching to region schedulers.</p>
+ * <p>The implementation is built on the four schedulers that Paper and Folia share, so the same
+ * code runs on both. "Global" here means <em>the global region tick thread</em>: on Paper that is
+ * the ordinary main thread, and on Folia it is the region that owns global state. It is the right
+ * place for work that touches neither a specific location nor a specific entity.</p>
+ *
+ * <p>Work that touches a player, a block or a chunk must <strong>not</strong> go through this
+ * interface — schedule it against the owning player or region instead, because on Folia only the
+ * thread that owns that region may touch it.</p>
  */
 public interface RtpScheduler {
 
     /**
-     * Run a task asynchronously as soon as possible.
+     * Run a task on the async pool as soon as possible. Safe from any thread.
      */
     void runAsync(@NotNull Runnable task);
 
     /**
-     * Run a task on the main server thread as soon as possible.
+     * Run a task on the global region tick thread as soon as possible.
      */
-    void runSync(@NotNull Runnable task);
+    void runGlobal(@NotNull Runnable task);
 
     /**
-     * Run a task asynchronously after the given delay in ticks.
+     * Run a task on the async pool after the given delay in ticks.
      */
     void runLaterAsync(@NotNull Runnable task, long delayTicks);
 
     /**
-     * Run a task on the main thread after the given delay in ticks.
+     * Run a task on the global region tick thread after the given delay in ticks.
      */
-    void runLaterSync(@NotNull Runnable task, long delayTicks);
+    void runLaterGlobal(@NotNull Runnable task, long delayTicks);
 
     /**
-     * Run a task asynchronously on a repeating timer.
+     * Repeat a task on the async pool.
      */
-    void runTimerAsync(@NotNull Runnable task, long delayTicks, long periodTicks);
+    void runTimerAsync(@NotNull Runnable task, long initialDelayTicks, long periodTicks);
 
     /**
-     * Run a task on the main thread on a repeating timer.
+     * Repeat a task on the global region tick thread.
      */
-    void runTimerSync(@NotNull Runnable task, long delayTicks, long periodTicks);
+    void runTimerGlobal(@NotNull Runnable task, long initialDelayTicks, long periodTicks);
 
     /**
-     * Cancel all tasks owned by this scheduler.
+     * Cancel every delayed and repeating task this scheduler created.
+     *
+     * <p>One-shot {@link #runAsync(Runnable)} and {@link #runGlobal(Runnable)} calls are not
+     * tracked: they finish immediately and keeping a reference to them would leak.</p>
      */
     void cancelAll();
 

@@ -226,9 +226,11 @@ public class GuiListener implements Listener {
         event.setCancelled(true);
         String newName = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
 
-        org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+        // Chat arrives on an async thread; renaming touches the player's homes and reopens their
+        // inventory, so hand it to the thread that owns that player's region.
+        player.getScheduler().run(plugin, scheduled -> {
             teleportManager.renameHome(player, oldName, newName);
             refreshHomeList(player);
-        });
+        }, null);
     }
 }

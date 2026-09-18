@@ -15,6 +15,7 @@ import net.sakurain.mc.easytp.util.DebugLog;
 import net.sakurain.mc.easytp.util.MessageUtil;
 import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.generator.structure.Structure;
@@ -23,8 +24,6 @@ import org.bukkit.util.StructureSearchResult;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -462,8 +461,9 @@ public class TeleportManager {
         Location origin = player.getLocation();
         World world = origin.getWorld();
 
-        // Structure location must be triggered synchronously
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        // Structure lookup touches world-generation state, so it must run on the thread that owns
+        // the origin region — the global region scheduler on Paper, the player's region on Folia.
+        Bukkit.getRegionScheduler().run(plugin, origin, scheduled -> {
             NamespacedKey key = structureKey.indexOf(':') >= 0
                     ? NamespacedKey.fromString(structureKey.toLowerCase(Locale.ROOT))
                     : NamespacedKey.minecraft(structureKey.toLowerCase(Locale.ROOT));
@@ -570,17 +570,22 @@ public class TeleportManager {
         sendRequestMessage(target, requester.getName(), here);
         setCooldown(requester, commandKey);
 
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        // The bookkeeping runs globally; each notification is sent on its own player's region,
+        // because on Folia only that thread may touch the player.
+        Bukkit.getGlobalRegionScheduler().runDelayed(plugin, scheduled -> {
             TeleportRequest req = pendingRequests.remove(target.getUniqueId());
-            if (req != null) {
-                Player stillTarget = Bukkit.getPlayer(target.getUniqueId());
-                Player stillRequester = Bukkit.getPlayer(requester.getUniqueId());
-                if (stillTarget != null) {
-                    MessageUtil.send(stillTarget, "request-expired");
-                }
-                if (stillRequester != null) {
-                    MessageUtil.send(stillRequester, "request-expired");
-                }
+            if (req == null) {
+                return;
+            }
+            Player stillTarget = Bukkit.getPlayer(target.getUniqueId());
+            if (stillTarget != null) {
+                stillTarget.getScheduler().run(plugin,
+                        t -> MessageUtil.send(stillTarget, "request-expired"), null);
+            }
+            Player stillRequester = Bukkit.getPlayer(requester.getUniqueId());
+            if (stillRequester != null) {
+                stillRequester.getScheduler().run(plugin,
+                        t -> MessageUtil.send(stillRequester, "request-expired"), null);
             }
         }, timeout * 20L);
     }
@@ -677,27 +682,47 @@ public class TeleportManager {
         if (delaySeconds <= 0) {
             DebugLog.log("teleport", "%s -> %s via '%s' with no delay", player.getName(),
                     describe(destination), commandKey);
-            player.teleportAsync(destination).thenRun(() -> {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    spawnArrivalParticles(destination);
-                    playTeleportSound(destination);
-                    if (onComplete != null) {
-                        onComplete.run();
-                    }
-                });
-            });
+            player.teleportAsync(destination).thenRun(() -> runOnArrival(player, destination, onComplete));
             return;
         }
 
         DebugLog.log("teleport", "%s -> %s via '%s', countdown %ds", player.getName(),
                 describe(destination), commandKey, delaySeconds);
         MessageUtil.send(player, "teleport-countdown", delaySeconds);
-        final int[] remaining = {delaySeconds};
         Location origin = player.getLocation().clone();
-        BukkitTask task = new DelayedTeleportTask(player, destination, remaining, onComplete)
-                .runTaskTimer(plugin, 20L, 20L);
-        pendingTeleports.put(player.getUniqueId(), new PendingTeleport(task, origin));
+
+        // The entity scheduler ticks on the thread that owns the player's region, and its
+        // "retired" callback fires when the player is removed — which replaces the old
+        // online check and is the correct signal on Folia too.
+        DelayedTeleportTask task = new DelayedTeleportTask(player, destination, new int[]{delaySeconds}, onComplete);
+        ScheduledTask scheduled = player.getScheduler().runAtFixedRate(plugin,
+                task::tick, task::abandon, 20L, 20L);
+        if (scheduled == null) {
+            DebugLog.log("teleport", "%s left before the countdown could start", player.getName());
+            return;
+        }
+        pendingTeleports.put(player.getUniqueId(), new PendingTeleport(scheduled, origin));
         showTitleCountdown(player, delaySeconds);
+    }
+
+    /**
+     * Announce an arrival and run the completion callback.
+     *
+     * <p>The effects belong to the destination, the callback belongs to the arriving player, and on
+     * Folia those are normally two different regions — so they are scheduled separately rather than
+     * assumed to share a thread.</p>
+     */
+    private void runOnArrival(@NotNull Player player, @NotNull Location destination, @Nullable Runnable onComplete) {
+        Bukkit.getRegionScheduler().run(plugin, destination, scheduled -> {
+            spawnArrivalParticles(destination);
+            playTeleportSound(destination);
+        });
+        player.getScheduler().run(plugin, scheduled -> {
+            DebugLog.log("teleport", "%s arrived at %s", player.getName(), describe(destination));
+            if (onComplete != null) {
+                onComplete.run();
+            }
+        }, null);
     }
 
     @NotNull
@@ -817,13 +842,24 @@ public class TeleportManager {
     // endregion
 
     /**
-     * Delayed teleport countdown task.
+     * Delayed teleport countdown.
+     *
+     * <p>Driven by the player's entity scheduler, so every tick already runs on the thread that
+     * owns the player's region. That is what makes the particles, the title and the chat countdown
+     * legal on Folia as well as on Paper.</p>
+     *
+     * <p>Unlike the previous implementation this no longer spawns arrival particles at the
+     * destination every tick. The destination is normally in another region — and usually another
+     * dimension — so on Folia that meant forcing work onto a foreign region once a second to place
+     * effects that no client was anywhere near. The arrival burst still plays in full, once, at the
+     * moment the player actually arrives.</p>
      */
-    private final class DelayedTeleportTask extends BukkitRunnable {
+    private final class DelayedTeleportTask {
         private final Player player;
         private final Location destination;
         private final int[] remaining;
         private final Runnable onComplete;
+        private boolean finished;
 
         DelayedTeleportTask(Player player, Location destination, int[] remaining, Runnable onComplete) {
             this.player = player;
@@ -832,34 +868,34 @@ public class TeleportManager {
             this.onComplete = onComplete;
         }
 
-        @Override
-        public void run() {
-            if (!player.isOnline()) {
-                cancel();
-                pendingTeleports.remove(player.getUniqueId());
-                DebugLog.log("teleport", "%s went offline during the countdown; teleport aborted", player.getName());
+        void tick(@NotNull ScheduledTask scheduled) {
+            if (finished) {
                 return;
             }
             spawnTeleportParticles(player, remaining[0]);
-            spawnArrivalParticles(destination);
             remaining[0]--;
             if (remaining[0] <= 0) {
-                cancel();
+                finished = true;
+                scheduled.cancel();
                 pendingTeleports.remove(player.getUniqueId());
-                player.teleportAsync(destination).thenRun(() -> {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        spawnArrivalParticles(destination);
-                        playTeleportSound(destination);
-                        DebugLog.log("teleport", "%s arrived at %s", player.getName(), describe(destination));
-                        if (onComplete != null) {
-                            onComplete.run();
-                        }
-                    });
-                });
+                player.teleportAsync(destination).thenRun(() -> runOnArrival(player, destination, onComplete));
             } else {
                 MessageUtil.send(player, "teleport-countdown", remaining[0]);
                 showTitleCountdown(player, remaining[0]);
             }
+        }
+
+        /**
+         * Called by the entity scheduler when the player is removed, replacing the old
+         * "went offline during the countdown" check.
+         */
+        void abandon() {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            pendingTeleports.remove(player.getUniqueId());
+            DebugLog.log("teleport", "%s went offline during the countdown; teleport aborted", player.getName());
         }
     }
 
@@ -872,6 +908,6 @@ public class TeleportManager {
     /**
      * Pending teleport record.
      */
-    private record PendingTeleport(BukkitTask task, Location origin) {
+    private record PendingTeleport(ScheduledTask task, Location origin) {
     }
 }

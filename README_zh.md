@@ -4,6 +4,7 @@
 
 [![PaperMC](https://img.shields.io/badge/PaperMC-26.1.2--26.2-004ee9?logo=minecraft&logoColor=white)](https://papermc.io/)
 [![Purpur](https://img.shields.io/badge/Purpur-26.1.2--26.2-9b59b6)](https://purpurmc.org/)
+[![Folia](https://img.shields.io/badge/Folia-26.2-ff9800)](https://papermc.io/software/folia)
 [![Java](https://img.shields.io/badge/Java-25-e76f00?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Maven](https://img.shields.io/badge/Maven-3.9+-C71A36?logo=apache-maven)](https://maven.apache.org/)
 [![Adventure](https://img.shields.io/badge/Adventure-MiniMessage-00bfa5?logo=bookstack)](https://docs.advntr.dev/minimessage/)
@@ -11,7 +12,7 @@
 
 </div>
 
-适用于 PaperMC 与 Purpur 26.1.2 – 26.2 的轻量级传送插件，提供随机传送、TPA 请求和多回家管理。所有传送都使用可配置的延迟倒计时，支持移动和受伤取消、粒子效果，以及 MiniMessage 格式化的聊天输出。
+适用于 PaperMC、Purpur 与 Folia 26.1.2 – 26.2 的轻量级传送插件，提供随机传送、TPA 请求和多回家管理。所有传送都使用可配置的延迟倒计时，支持移动和受伤取消、粒子效果，以及 MiniMessage 格式化的聊天输出。
 
 [功能特性](#功能特性) | [技术栈](#技术栈) | [项目结构](#项目结构) | [快速开始](#快速开始) | [开发](#开发) | [构建与部署](#构建与部署) | [配置](#配置) | [命令与权限](#命令与权限) | [核心设计](#核心设计) | [故障排除](#故障排除) | [贡献](#贡献) | [许可证](#许可证)
 
@@ -111,7 +112,7 @@
 
 | 类别 | 技术 | 版本 |
 |------|------|------|
-| 平台 | PaperMC / Purpur | 26.1.2 – 26.2 |
+| 平台 | PaperMC / Purpur / Folia | 26.1.2 – 26.2 |
 | 语言 | Java | 25 |
 | 构建工具 | Maven | 3.9+ |
 | 核心 API | `io.papermc.paper:paper-api` | 26.1.2.build.72-stable（已固定） |
@@ -121,9 +122,9 @@
 
 | 服务端 | 状态 | 说明 |
 |--------|------|------|
-| **PaperMC 26.1.2 – 26.2** | ✅ 支持 | `api-version: '26.1.2'` 的含义是"26.1.2 或更高"，因此同一个 JAR 可运行于整个受支持的 26.x 系列。 |
-| **PurpurMC 26.1.2 – 26.2** | ✅ 支持 | Purpur 是 Paper 的直接替换品。EasyTP 没有引入任何 `org.purpurmc` 代码，也不使用 NMS，因此行为完全一致。 |
-| **Folia** | ❌ 不支持 | 未声明 `folia-supported`，Folia 会拒绝加载本插件。要支持它需要把所有调度调用迁移到区域调度器——见下方 [Folia 兼容性](#folia-兼容性)。 |
+| **PaperMC 26.1.2 – 26.2** | 支持 | `api-version: '26.1.2'` 的含义是"26.1.2 或更高"，因此同一个 JAR 可运行于整个受支持的 26.x 系列。 |
+| **PurpurMC 26.1.2 – 26.2** | 支持 | Purpur 是 Paper 的直接替换品。EasyTP 没有引入任何 `org.purpurmc` 代码，也不使用 NMS，因此行为完全一致。 |
+| **Folia** | 支持 | 已声明 `folia-supported: true`，且只使用 Paper 与 Folia 共有的区域感知调度器。见下方 [Folia 支持](#folia-支持)。 |
 
 构建时**编译**所依赖的是它所声明支持的**最低** API 版本（`26.1.2`），这保证它不可能误用仅存在于更新版本中的 API。
 此外已额外验证其可在 `26.2` 稳定版下编译通过，确认它依赖的 API 没有在 26.2 中被移除（尤其是 Adventure 5 的变更）。
@@ -173,7 +174,7 @@ EasyTP/
 
 ### 前置条件
 
-- **服务器**：PaperMC 或 Purpur 26.1.2 – 26.2
+- **服务器**：PaperMC、Purpur 或 Folia 26.1.2 – 26.2
 - **Java**：OpenJDK 25 或兼容版本
 - **构建工具**：Maven 3.9+（仅从源码构建时需要）
 
@@ -407,36 +408,50 @@ mvn clean package
 
 ---
 
-## Folia 兼容性
+## Folia 支持
 
-**EasyTP 目前不支持 Folia。** 由于未声明 `folia-supported: true`，Folia 会**干净地拒绝加载**本插件，
-而不是加载后在运行时出错。
+EasyTP 在 Paper、Purpur 与 Folia 上无需改动即可运行。插件声明了 `folia-supported: true`，并且**完全
+不使用**旧的 `BukkitScheduler`——它在 Folia 上会抛异常，因为根本不存在可供调度工作的单一主线程。
 
-Folia 取消了主线程：每个世界被拆分成独立计时的区域，只有拥有对应区域的线程才能触碰服务端 API。
-EasyTP 是按单一主线程编写的，以下用法在 Folia 上无效：
+### 线程模型
 
-| 方面 | 阻断点 |
-|------|--------|
-| 调度 | 5 处 `Bukkit.getScheduler()`，以及基于 `BukkitRunnable` 的倒计时任务 |
-| 区块访问 | 2 处同步的 `world.getChunkAt(...)` |
-| 区域亲和性 | `spawnParticle`、`openInventory`、`closeInventory`、`showTitle`、`playSound` 必须在拥有该玩家的线程上执行 |
-| 异步安全 | `world.getWorldBorder()` 在 RTP 校验线程上被读取 |
+Folia 把每个世界拆分成独立计时的区域，只有拥有对应区域的线程才能触碰服务端 API。因此插件只使用
+Paper 与 Folia **共有**的四个调度器：
 
-该迁移属于**机械性改造而非架构重写**：四个可移植调度器
-（`getGlobalRegionScheduler`、`getRegionScheduler`、`getAsyncScheduler`、`Entity#getScheduler()`）
-**已经存在于本插件编译所依赖的 `paper-api` 中**，因此同一个 JAR 即可同时服务 Paper、Purpur **和** Folia，
-无需额外依赖、也无需单独构建。
+| 调度器 | 用途 |
+|--------|------|
+| `AsyncScheduler` | 区块校验、空间记忆探测、存储落盘——均不触碰服务端 API |
+| `GlobalRegionScheduler` | 预载池记账，以及不属于任何具体位置的共享插件状态 |
+| `RegionScheduler` | 与具体位置绑定的工作：到达特效、结构查找、同步纵列扫描 |
+| `Entity#getScheduler()` | 任何触碰玩家的操作：倒计时、聊天、标题、GUI、传送完成回调 |
 
-### 建议：保持单代码库，不要另做 Folia 移植版
+在 Paper 上它们分别落在主线程与异步池，因此**同一套代码路径同时服务两个平台**。没有单独的 Folia
+构建产物，也没有运行时的平台判断。
 
-同类插件走的正是这条路——[LeafRTP](https://www.spigotmc.org/resources/leafrtp-paper-folia-velocity.94812/)
-用**单个**制品同时支持 Paper、Folia 和 Velocity，PaperMC 官方也维护了
-[Supporting Paper and Folia](https://docs.papermc.io/paper/dev/folia-support/) 指南。而 `RtpScheduler`
-本来就是为这次改造预留的接缝，架构已经就位。
+### 区域边界规则
 
-有一点需要提前规划：Folia 在随机传送上其实**更快**，因为区域线程会并行执行 Paper 只能串行处理到单线程上的搜索。
-但 `/rtp` 会跨维度预热数千格以外的区块，这在区域化模型下代价高得多——在 Folia 上请调小
-`rtp.spiral.ring-zones`。这是配置问题，而不是另开分支的理由。
+三条不变量保证插件在区域化下正确工作。
+
+- **只有拥有某个区块区域的线程才能读取该区块。** `/rtp` 有意面向数千格以外的区块，因此候选校验走
+  `getChunkAtAsync`；仅剩的两处同步读取由 `Bukkit.isOwnedByCurrentRegion(...)` 保护。守卫失败时跳过
+  热池条目、走常规异步路径——代价是多一次区块加载，而不是崩溃。
+- **特效与完成回调所属的区域通常不同于传送本身。** 到达时粒子在目标位置的区域播放，完成回调则在
+  到达玩家自己的区域执行，因为在 Folia 上这两者几乎不可能落在同一线程。
+- **倒计时跟随玩家而非全局计时器。** 它通过玩家的实体调度器驱动，因此会随玩家跨区域迁移，并在玩家
+  断开时被自动注销——用平台自身的生命周期信号替代了原先的"玩家是否仍在线"检查。
+
+### 面向区域化服务端的搜索调优
+
+区域化让 RTP 搜索在一个方面更省、另一个方面更贵。区域线程会并行执行 Paper 只能串行到单线程上的校验，
+但 `/rtp` 仍会读取任何玩家区域之外的区块，而每次读取都会记在拥有该区域的那条线程账上。现有的限制项
+正好覆盖这一点：
+
+| 配置项 | 作用 |
+|--------|------|
+| `rtp.pool.max-in-flight-loads` | 限制同时在途的区块加载数量 |
+| `rtp.spiral.ring-zones` | 决定候选点的取样距离，因而也决定搜索会触及多少冷区域 |
+
+在 Folia 服务端上，建议把 `ring-zones` 范围设置得比 Paper 上更小。
 
 ---
 

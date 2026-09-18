@@ -4,6 +4,9 @@ main: net.sakurain.mc.easytp.EasyTPPlugin
 api-version: '26.1.2'
 description: Lightweight random teleport and TPA plugin for PaperMC and Purpur 26.1.2 - 26.2
 author: SakurainMC
+# EasyTP only uses the schedulers Paper and Folia share (global region, region, async, entity),
+# never the legacy BukkitScheduler, so one JAR runs on Paper, Purpur and Folia.
+folia-supported: true
 
 commands:
   rtp:
