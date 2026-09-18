@@ -171,7 +171,9 @@ teleport:
 # Per-command dimension whitelist.
 #
 # A command may only be used while the player stands in one of the listed dimensions.
-# Valid values: OVERWORLD, NETHER, THE_END
+# Valid values: OVERWORLD, NETHER, THE_END. (NORMAL, WORLD and END are accepted as aliases, and
+# any environment's Bukkit enum name works too.) Entries that mean nothing are reported once and
+# ignored, never treated as "deny everywhere".
 #
 # A missing or empty list means "no restriction" (every dimension is allowed), which is the
 # default. To stop a command entirely, switch off its command class under `commands` instead.

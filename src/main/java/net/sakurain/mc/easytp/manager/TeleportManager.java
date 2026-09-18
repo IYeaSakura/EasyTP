@@ -31,6 +31,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages random teleport, TPA requests, delayed teleports, and home persistence.
@@ -43,6 +44,11 @@ public class TeleportManager {
     private final Map<String, Long> cooldowns = new HashMap<>();
     private final Map<UUID, TeleportRequest> pendingRequests = new HashMap<>();
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
+    /**
+     * Whitelist entries already reported as unrecognised, keyed by command and raw value, so a
+     * typo produces one warning per config load instead of one per command use.
+     */
+    private final Set<String> warnedDimensions = ConcurrentHashMap.newKeySet();
 
     public TeleportManager(@NotNull EasyTPPlugin plugin, @NotNull DatabaseManager databaseManager, @NotNull RtpEngine rtpEngine) {
         this.plugin = plugin;
@@ -321,35 +327,71 @@ public class TeleportManager {
 
     // region Dimension policy
 
-    /** Every dimension EasyTP understands, used when a command has no whitelist configured. */
-    private static final Set<World.Environment> ALL_DIMENSIONS = Collections.unmodifiableSet(
-            EnumSet.of(World.Environment.NORMAL, World.Environment.NETHER, World.Environment.THE_END));
-
     /**
      * Read {@code dimensions.<command>} and resolve it to a set of environments.
      *
-     * <p>A missing or empty list means "no restriction", and so does a list whose entries are all
-     * unrecognised — locking a command out of every dimension because of a typo would be a nasty
-     * surprise, so unknown entries are reported and ignored instead.</p>
+     * <p>An <b>empty</b> result means "no restriction". That covers both a missing or empty list
+     * and a list whose entries were all unrecognised: locking a command out of every dimension
+     * because of a typo would be a nasty surprise, so unknown entries are reported and ignored.
+     * Callers must therefore treat an empty set as "allow", not as "deny everything".</p>
      */
     @NotNull
     private Set<World.Environment> readCommandDimensions(@NotNull String commandKey) {
         List<String> configured = plugin.getConfig().getStringList("dimensions." + commandKey);
-        if (configured.isEmpty()) {
-            return ALL_DIMENSIONS;
-        }
         EnumSet<World.Environment> allowed = EnumSet.noneOf(World.Environment.class);
         for (String raw : configured) {
             if (raw == null || raw.isBlank()) {
                 continue;
             }
-            try {
-                allowed.add(World.Environment.valueOf(raw.trim().toUpperCase(Locale.ROOT)));
-            } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Unknown dimension '" + raw + "' in dimensions." + commandKey);
+            World.Environment environment = parseDimension(raw);
+            if (environment == null) {
+                warnUnknownDimension(commandKey, raw);
+            } else {
+                allowed.add(environment);
             }
         }
-        return allowed.isEmpty() ? ALL_DIMENSIONS : allowed;
+        return allowed;
+    }
+
+    /**
+     * Resolve one entry of a dimension whitelist.
+     *
+     * <p>{@code OVERWORLD} is accepted as the name of {@link World.Environment#NORMAL}. Bukkit's
+     * enum calls that dimension NORMAL, but "OVERWORLD" is the word the language files, the
+     * shipped config and every operator use — and {@code valueOf} rejected it, which silently
+     * dropped the overworld out of every default whitelist and denied the command there. The
+     * enum name still works, so existing configs keep behaving as before.</p>
+     *
+     * @return the environment, or {@code null} when the entry means nothing
+     */
+    @Nullable
+    private static World.Environment parseDimension(@NotNull String raw) {
+        String name = raw.trim().toUpperCase(Locale.ROOT);
+        return switch (name) {
+            case "OVERWORLD", "OVER_WORLD", "WORLD", "NORMAL" -> World.Environment.NORMAL;
+            case "NETHER", "THE_NETHER" -> World.Environment.NETHER;
+            case "END", "THE_END", "THEEND" -> World.Environment.THE_END;
+            default -> {
+                try {
+                    yield World.Environment.valueOf(name);
+                } catch (IllegalArgumentException e) {
+                    yield null;
+                }
+            }
+        };
+    }
+
+    /** Reports a bad whitelist entry once per config load rather than once per command use. */
+    private void warnUnknownDimension(@NotNull String commandKey, @NotNull String raw) {
+        if (warnedDimensions.add(commandKey + '\u0000' + raw)) {
+            plugin.getLogger().warning("Unknown dimension '" + raw + "' in dimensions." + commandKey
+                    + " (accepted: OVERWORLD, NETHER, THE_END)");
+        }
+    }
+
+    /** Re-arms the unknown-dimension warnings, so {@code /easytp reload} reports a fixed config. */
+    public void onConfigReload() {
+        warnedDimensions.clear();
     }
 
     /**
@@ -359,11 +401,12 @@ public class TeleportManager {
      */
     public boolean checkDimension(@NotNull Player player, @NotNull String commandKey) {
         World.Environment current = player.getWorld().getEnvironment();
-        if (readCommandDimensions(commandKey).contains(current)) {
+        Set<World.Environment> allowed = readCommandDimensions(commandKey);
+        if (allowed.isEmpty() || allowed.contains(current)) {
             return true;
         }
         DebugLog.log("dimension", "%s denied '%s' in %s (allowed: %s)",
-                player.getName(), commandKey, current, readCommandDimensions(commandKey));
+                player.getName(), commandKey, current, allowed);
         MessageUtil.send(player, "dimension-not-allowed",
                 Placeholder.component("dimension", MessageUtil.dimensionName(current)));
         return false;

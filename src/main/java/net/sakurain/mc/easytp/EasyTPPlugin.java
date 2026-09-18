@@ -210,6 +210,7 @@ public class EasyTPPlugin extends JavaPlugin {
         // Re-read the debug switches so /easytp reload can turn diagnostics on or off live.
         DebugLog.init(this);
         rtpEngine.reload();
+        teleportManager.onConfigReload();
 
         List<String> restartRequired = detectRestartOnlyChanges();
         getLogger().info(restartRequired.isEmpty()
