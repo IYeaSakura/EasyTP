@@ -1,0 +1,17 @@
+burst_p50_ms=16364.509
+burst_p99_ms=16365.279
+burst_max_ms=16365.468
+burst_tick_p99_ms=2.58
+capped_p50_ms=2489.666
+capped_p99_ms=8727.819
+capped_max_ms=8811.291
+capped_tick_p99_ms=50.39
+acquire_p50_ms=13.9095
+acquire_p99_ms=32.9350
+snapshot_p50_ms=0.0931
+snapshot_p99_ms=1.3678
+scan_p50_ms=0.14820
+scan_p99_ms=5.82610
+safe=6
+n=64
+had_to_load=64

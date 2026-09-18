@@ -1,0 +1,8 @@
+cells=60000
+cacheSize=50000
+capacity=50000
+probe_state=SAFE
+probe_micros=63.8
+pending_before_probe=59985
+hits=16618
+misses=3383

@@ -17,7 +17,7 @@ public record RingZone(
      * Area of this ring in square blocks.
      */
     public long area() {
-        return (long) Math.PI * ((long) maxRadius * maxRadius - (long) minRadius * minRadius);
+        return (long) (Math.PI * ((long) maxRadius * maxRadius - (long) minRadius * minRadius));
     }
 
     /**

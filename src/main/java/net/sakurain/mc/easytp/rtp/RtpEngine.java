@@ -659,9 +659,8 @@ public class RtpEngine {
             if (type.isAir()) {
                 continue;
             }
-            if (type == Material.LAVA || type == Material.WATER || type == Material.BEDROCK) {
-                return RegionState.UNSAFE_BLOCK;
-            }
+            // The first non-air block in the column is what disqualified it, whatever
+            // it is: lava, water, bedrock, or ordinary terrain that left no standing room.
             return RegionState.UNSAFE_BLOCK;
         }
         return RegionState.UNSAFE_VOID;

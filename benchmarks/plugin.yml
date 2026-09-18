@@ -1,0 +1,7 @@
+name: EasyTPBench
+version: '1.0.0'
+main: net.sakurain.bench.BenchPlugin
+api-version: '26.2'
+depend: [EasyTP]
+description: Headless benchmark harness for the EasyTP RTP pipeline.
+authors: [EasyTP]

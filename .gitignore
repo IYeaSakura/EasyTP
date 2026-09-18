@@ -1,3 +1,13 @@
 AGENTS.md
 .vscode/
 target/
+
+# benchmark harness build output
+benchmarks/build/
+benchmarks/EasyTPBench.jar
+
+# local Paper test server: server jar, worlds, logs
+test/
+
+# regenerable coordinate dumps from the benchmark (~2.3 MB each)
+docs/bench/*/spiral_*.csv
