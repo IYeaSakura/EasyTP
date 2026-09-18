@@ -23,7 +23,9 @@ everything else is constructed directly.
 
 The suite runs on an **async** thread and dispatches the chunks that must touch the
 server thread through `GlobalRegionScheduler`. Results land in `bench-out/` in the
-server working directory; the server shuts itself down when the run finishes.
+server working directory — the CSV dumps plus `console.txt`, which holds the logged
+summary lines and is the only durable record of the B1 and B5 wall-clock timings. The
+server shuts itself down when the run finishes.
 
 ## Running it
 
@@ -46,7 +48,7 @@ anywhere; only the deploy helper is Windows-specific.
 
 The server directory needs `eula.txt` with `eula=true` and a `plugins/` folder.
 
-## Three traps that corrupt the data silently
+## Four traps that corrupt the data silently
 
 Each of these produced plausible-looking but wrong numbers before being noticed. None
 of them raises an error.
@@ -65,6 +67,14 @@ of them raises an error.
    over the whole ring compares two different regions and makes a correct
    implementation look biased. Recover the index interval from the measured radii
    first — `SpiralCoordinateGenerator` has no public accessor for its rings.
+
+4. **Treating repeated rounds as independent samples.** B2 derives its 64 candidate
+   columns from a fixed stride over a deterministic sequence (`pts.get(i * 7 % size)`),
+   so every run measures *the same* 64 columns. Summing the `safe` counts across runs as
+   though each contributed 64 fresh columns manufactures a confidence interval that does
+   not exist: four rounds agreeing on `6/64` is the deterministic sampler working as
+   written, not four independent estimates. Change the stride or the starting index if a
+   genuinely larger sample is needed.
 
 ## Comparing the refill metrics
 

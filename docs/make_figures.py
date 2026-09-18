@@ -127,6 +127,24 @@ def nearest_neighbour(xy: np.ndarray) -> np.ndarray:
     return dist[:, 1]
 
 
+def azimuthal_counts(theta: np.ndarray, n_sector: int) -> np.ndarray:
+    """Point counts per equal-width azimuth sector."""
+    idx = np.minimum((theta / (2.0 * np.pi) * n_sector).astype(np.int64), n_sector - 1)
+    return np.bincount(idx, minlength=n_sector).astype(np.float64)
+
+
+def max_radial_gap_per_sector(radius: np.ndarray, theta: np.ndarray,
+                              n_sector: int) -> np.ndarray:
+    """Largest radial hole inside each sector -- detects radial streak artefacts."""
+    idx = np.minimum((theta / (2.0 * np.pi) * n_sector).astype(np.int64), n_sector - 1)
+    gaps = np.full(n_sector, np.nan)
+    for s in range(n_sector):
+        rr = np.sort(radius[idx == s])
+        if rr.size > 1:
+            gaps[s] = np.max(np.diff(rr))
+    return gaps
+
+
 def quadrat_counts(xy: np.ndarray, nbins: int = 43) -> np.ndarray:
     """Counts per quadrat over the bounding box, restricted to the annulus.
 
@@ -241,8 +259,13 @@ def fig_sampling() -> None:
     ax.legend(fontsize=7.5, frameon=False)
     ax.tick_params(labelsize=8)
 
-    fig.suptitle(r"图 3  三种一维到二维采样方案的对比（环带 2000–5000 格，$s=16$）",
+    fig.suptitle(r"图 3  三种一维到二维采样方案的对比（环带 2000–5000 格，$s=16$）"
+                 "\n" r"(a)–(c) 为各 4000 点的等样本量散点抽样；(d)–(f) 的统计量取各方案的完整样本",
                  fontsize=11.5, y=1.005)
+    # The default hspace lets the top row's x-label collide with the bottom row's
+    # title, so the two rows are separated explicitly.
+    fig.subplots_adjust(top=0.87, bottom=0.08, left=0.07, right=0.985,
+                        wspace=0.26, hspace=0.38)
     fig.savefig(os.path.join(OUT, "fig3_sampling.png"))
     plt.close(fig)
 
@@ -407,6 +430,20 @@ def report_claims() -> None:
         print(f"[图2] p={p:.2f}: P(N>=10)={(1-p)**9*100:.2f}%  "
               f"P(N>=20)={(1-p)**19*100:.4f}%  "
               f"n(1e-3)={1 + math.log(1e-3)/math.log(1-p):.1f}")
+
+    # 3.2 节的方位向规则性：必须用整数坐标下的整周期样本，不能用图 3(c) 的抽稀散点。
+    xy_spiral = np.rint(scheme_spiral(N_CYCLE)[0])
+    xy_rand = scheme_sqrt_radius(N_CYCLE, np.random.default_rng(SEED + 11))
+    for name, xy in (("黄金角螺旋", xy_spiral), ("面积反变换随机", xy_rand)):
+        rr = np.hypot(xy[:, 0], xy[:, 1])
+        tt = np.arctan2(xy[:, 1], xy[:, 0]) % (2.0 * np.pi)
+        out = []
+        for n_sector in (60, 360):
+            c = azimuthal_counts(tt, n_sector)
+            out.append(f"{n_sector}扇区 {c.std()/c.mean():.4f} (Poisson {1/np.sqrt(c.mean()):.4f})")
+        gap = max_radial_gap_per_sector(rr, tt, 72)
+        print(f"[3.2] 方位向 {name}: " + "; ".join(out) +
+              f"; 72扇区最大径向空隙={np.nanmax(gap):.2f} 格")
 
     for metric in ("candidate", "total"):
         gen, load = refill_trace(metric)

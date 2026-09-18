@@ -11,3 +11,6 @@ test/
 
 # regenerable coordinate dumps from the benchmark (~2.3 MB each)
 docs/bench/*/spiral_*.csv
+
+# bytecode from the analysis scripts in docs/
+__pycache__/

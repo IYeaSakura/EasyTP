@@ -1,0 +1,18 @@
+=== EasyTP RTP benchmark ===
+world=bench border=5.9999968E7 minY=-64 maxY=320 cores=20 maxHeapMB=2048 java=25.0.3
+[B1 single] 200000 points in 39.9 ms -> 5007574 points/s (200 ns/point)
+[B1 single] analytic ring capacity = 257708
+[B1 shipped] 200000 points in 46.0 ms -> 4351695 points/s (230 ns/point)
+[B1 shipped] analytic ring capacity = 641203
+[B3 candidate_only] target=14 after 60 ticks: generatedTotal=132 validatedTotal=120 candidates=12 validatedPool=14
+[B3 validated_plus_candidate] target=14 after 60 ticks: generatedTotal=14 validatedTotal=14 candidates=0 validatedPool=14
+[B5] wrote 60000 cells in 37 ms (623 ns/cell); cacheSize=50000 (capacity=50000)
+[B5] pending-write probe: evicted cell returns SAFE in 64 us (pendingCellCount=59985)
+[B5] after 20000 random reads: hits=16618 misses=3383 hitRate=83.1%
+[burst] peak in-flight=64 failures=0 loadedNow=44/64
+[B2 burst] n=64 uncapped load p50=16365ms p99=16365ms max=16365ms | tickTime p99=2.6ms
+[capped] peak in-flight=8 failures=0 loadedNow=1/64
+[B2 capped] n=64 capped-at-8 load p50=2490ms p99=8728ms max=8811ms | tickTime p99=50.4ms
+[B2 sync] n=64 (had to load 64) | chunk acquire p50=13.910ms p99=32.935ms | snapshot p50=0.093ms p99=1.368ms | column scan p50=0.1482ms p99=5.8261ms | safe=6/64 (9%)
+[B2 totals] over 64 columns: sync acquire=755.7ms snapshot=11.3ms scan=29.8ms
+=== benchmark complete ===

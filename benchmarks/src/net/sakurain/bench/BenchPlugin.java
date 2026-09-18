@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -49,7 +50,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * blocking the server thread would deadlock, because asynchronous chunk loads cannot
  * complete while the tick loop is stalled.</p>
  *
- * <p>Output goes to {@code bench-out/} in the server working directory.</p>
+ * <p>Output goes to {@code bench-out/} in the server working directory. Besides the CSV
+ * dumps, every run writes {@code console.txt}: B1 and B5 report wall-clock timings that
+ * no CSV column carries, so that file is the only durable record of them.</p>
  */
 public final class BenchPlugin extends JavaPlugin {
 
@@ -62,6 +65,19 @@ public final class BenchPlugin extends JavaPlugin {
     private static final int POOL_BASE_SIZE = 12;
 
     private Path outDir;
+
+    /**
+     * Every informational line is kept as well as logged, so a run leaves a
+     * {@code console.txt} behind next to the CSV output. The timing lines are the only
+     * record of B1 and B5 -- they are not derivable from the coordinate dumps -- so
+     * without this file those numbers exist only in the server log.
+     */
+    private final List<String> notes = Collections.synchronizedList(new ArrayList<>());
+
+    private void note(String message) {
+        getLogger().info(message);
+        notes.add(message);
+    }
 
     private final ConcurrentLinkedQueue<Double> tickSamples = new ConcurrentLinkedQueue<>();
     private volatile boolean sampling = false;
@@ -111,8 +127,8 @@ public final class BenchPlugin extends JavaPlugin {
 
     private void runAll(EasyTPPlugin easyTP) throws Exception {
         World world = Bukkit.getWorlds().get(0);
-        getLogger().info("=== EasyTP RTP benchmark ===");
-        getLogger().info("world=" + world.getName()
+        note("=== EasyTP RTP benchmark ===");
+        note("world=" + world.getName()
                 + " border=" + world.getWorldBorder().getSize()
                 + " minY=" + world.getMinHeight() + " maxY=" + world.getMaxHeight()
                 + " cores=" + Runtime.getRuntime().availableProcessors()
@@ -133,7 +149,20 @@ public final class BenchPlugin extends JavaPlugin {
 
         storage.flush();
         storage.close();
-        getLogger().info("=== benchmark complete ===");
+        note("=== benchmark complete ===");
+        writeConsoleSummary();
+    }
+
+    /** Persists the logged lines so the timing numbers survive outside the server log. */
+    private void writeConsoleSummary() {
+        try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(
+                outDir.resolve("console.txt"), StandardCharsets.UTF_8))) {
+            for (String line : notes) {
+                w.println(line);
+            }
+        } catch (IOException e) {
+            getLogger().warning("cannot write console.txt: " + e.getMessage());
+        }
     }
 
     /** Matches figure 3: one ring 2000-5000, s=16. */
@@ -164,7 +193,7 @@ public final class BenchPlugin extends JavaPlugin {
         }
         long ns = System.nanoTime() - t0;
 
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B1 %s] %d points in %.1f ms -> %.0f points/s (%.0f ns/point)",
                 tag, SPIRAL_POINTS, ns / 1e6, SPIRAL_POINTS * 1e9 / ns, (double) ns / SPIRAL_POINTS));
 
@@ -181,7 +210,7 @@ public final class BenchPlugin extends JavaPlugin {
             estimated += (long) (Math.PI * ((long) r.maxRadius() * r.maxRadius()
                     - (long) r.minRadius() * r.minRadius())) / (params.gridSpacing() * params.gridSpacing());
         }
-        getLogger().info("[B1 " + tag + "] analytic ring capacity = " + estimated);
+        note("[B1 " + tag + "] analytic ring capacity = " + estimated);
 
         return pts;
     }
@@ -239,7 +268,7 @@ public final class BenchPlugin extends JavaPlugin {
                             generatedTotal, validatedTotal, target);
                 }
 
-                getLogger().info(String.format(Locale.ROOT,
+                note(String.format(Locale.ROOT,
                         "[B3 %s] target=%d after %d ticks: generatedTotal=%d validatedTotal=%d"
                                 + " candidates=%d validatedPool=%d",
                         metric, target, POOL_TICKS, generatedTotal, validatedTotal,
@@ -300,13 +329,13 @@ public final class BenchPlugin extends JavaPlugin {
         long hits = memory.drainHits();
         long misses = memory.drainMisses();
 
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B5] wrote %d cells in %.0f ms (%.0f ns/cell); cacheSize=%d (capacity=%d)",
                 n, writeNs / 1e6, (double) writeNs / n, memory.cacheSize(), LRU_CAPACITY));
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B5] pending-write probe: evicted cell returns %s in %.0f us (pendingCellCount=%d)",
                 probe, probeNs / 1e3, pendingBefore));
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B5] after 20000 random reads: hits=%d misses=%d hitRate=%.1f%%",
                 hits, misses, 100.0 * hits / Math.max(1, hits + misses)));
 
@@ -345,14 +374,14 @@ public final class BenchPlugin extends JavaPlugin {
         startSampler();
         long[] burstLatency = loadChunks(world, burstX, burstZ, Integer.MAX_VALUE, "burst");
         double burstTickP99 = stopSampler();
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B2 burst] n=%d uncapped load p50=%.0fms p99=%.0fms max=%.0fms | tickTime p99=%.1fms",
                 n, pct(burstLatency, 50), pct(burstLatency, 99), pct(burstLatency, 100), burstTickP99));
 
         startSampler();
         long[] cappedLatency = loadChunks(world, cappedX, cappedZ, 8, "capped");
         double cappedTickP99 = stopSampler();
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B2 capped] n=%d capped-at-8 load p50=%.0fms p99=%.0fms max=%.0fms | tickTime p99=%.1fms",
                 n, pct(cappedLatency, 50), pct(cappedLatency, 99), pct(cappedLatency, 100), cappedTickP99));
 
@@ -422,7 +451,7 @@ public final class BenchPlugin extends JavaPlugin {
         long[] acqArr = toArray(acquireNs);
         long[] snapArr = toArray(snapshotNs);
         long[] scnArr = toArray(scanNs);
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B2 sync] n=%d (had to load %d) | chunk acquire p50=%.3fms p99=%.3fms"
                         + " | snapshot p50=%.3fms p99=%.3fms"
                         + " | column scan p50=%.4fms p99=%.4fms | safe=%d/%d (%.0f%%)",
@@ -431,7 +460,7 @@ public final class BenchPlugin extends JavaPlugin {
                 pct(snapArr, 50), pct(snapArr, 99),
                 pct(scnArr, 50), pct(scnArr, 99),
                 safe.get(), scnArr.length, 100.0 * safe.get() / Math.max(1, scnArr.length)));
-        getLogger().info(String.format(Locale.ROOT,
+        note(String.format(Locale.ROOT,
                 "[B2 totals] over %d columns: sync acquire=%.1fms snapshot=%.1fms scan=%.1fms",
                 scnArr.length, sumMs(acqArr), sumMs(snapArr), sumMs(scnArr)));
 
@@ -491,7 +520,7 @@ public final class BenchPlugin extends JavaPlugin {
         if (!done.await(300, TimeUnit.SECONDS)) {
             getLogger().warning("[" + tag + "] timed out waiting for chunk loads");
         }
-        getLogger().info("[" + tag + "] peak in-flight=" + peak.get()
+        note("[" + tag + "] peak in-flight=" + peak.get()
                 + " failures=" + failures.get()
                 + " loadedNow=" + countLoaded(world, xs, zs) + "/" + n);
         return latency;

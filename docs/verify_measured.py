@@ -21,10 +21,34 @@ BENCH = os.path.join(HERE, "bench")
 
 R_MIN, R_MAX, S = 2000.0, 5000.0, 16.0
 GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
-# RingZone.area() truncates pi to 3, so the generator's own capacity estimate is
-# lower than the analytic one. Both are reported because the difference is real.
-CAPACITY_TRUNC = 3 * (int(R_MAX) ** 2 - int(R_MIN) ** 2) // (int(S) ** 2)
 CAPACITY_EXACT = int(math.pi * (R_MAX ** 2 - R_MIN ** 2) / S ** 2)
+# What the capacity would be if the rounding happened before the multiplication,
+# i.e. `(long) Math.PI * (...)`. Kept as the contrast case for the source check.
+CAPACITY_TRUNC = 3 * (int(R_MAX) ** 2 - int(R_MIN) ** 2) // (int(S) ** 2)
+
+RING_ZONE = os.path.join(os.path.dirname(HERE),
+                         "src", "main", "java", "net", "sakurain", "mc", "easytp",
+                         "rtp", "spiral", "RingZone.java")
+
+
+def ring_zone_capacity() -> str:
+    """Reads RingZone.area() and checks the order of the multiplication and the cast.
+
+    `(long) Math.PI * x` truncates pi to 3 before multiplying, which makes the
+    capacity estimate 4.5% low and wraps the spiral before it reaches the outer
+    edge of the ring. This is checked against the source rather than restated,
+    because the article quotes the analytic value and the two must agree.
+    """
+    try:
+        with open(RING_ZONE, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        return f"无法读取 RingZone.java: {exc}"
+    if "(long) (Math.PI *" in text:
+        return f"{CAPACITY_EXACT}  (先乘后取整，与式 9 一致)"
+    if "(long) Math.PI *" in text:
+        return f"{CAPACITY_TRUNC}  <- 写成 (long) Math.PI * ...，pi 被截断为 3"
+    return "无法识别 RingZone.area() 的写法，请人工核对"
 
 
 def model_spiral(n: int) -> tuple[np.ndarray, np.ndarray]:
@@ -96,7 +120,7 @@ def main() -> int:
     print(f"  半径范围      : {mr.min():.1f} .. {mr.max():.1f}  (暖机 {warmup} 点后开始记录)")
     print(f"  索引区间      : {i_lo} .. {i_hi}")
     print(f"  解析容量      : 精确 {CAPACITY_EXACT}")
-    print(f"  代码内容量    : (long)pi 截断后 {CAPACITY_TRUNC}  <- RingZone.area() 用了 (long) Math.PI")
+    print(f"  代码内容量    : {ring_zone_capacity()}")
     uniq = len(np.unique(mx * 100000 + mz))
     print(f"  去重点数      : {uniq}  (重复 {n - uniq})")
 
