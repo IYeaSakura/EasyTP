@@ -2,7 +2,8 @@
 
 <div align="center">
 
-[![PaperMC](https://img.shields.io/badge/PaperMC-26.1.2-004ee9?logo=minecraft&logoColor=white)](https://papermc.io/)
+[![PaperMC](https://img.shields.io/badge/PaperMC-26.1.2--26.2-004ee9?logo=minecraft&logoColor=white)](https://papermc.io/)
+[![Purpur](https://img.shields.io/badge/Purpur-26.1.2--26.2-9b59b6)](https://purpurmc.org/)
 [![Java](https://img.shields.io/badge/Java-25-e76f00?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Maven](https://img.shields.io/badge/Maven-3.9+-C71A36?logo=apache-maven)](https://maven.apache.org/)
 [![Adventure](https://img.shields.io/badge/Adventure-MiniMessage-00bfa5?logo=bookstack)](https://docs.advntr.dev/minimessage/)
@@ -10,7 +11,7 @@
 
 </div>
 
-A lightweight teleport plugin for PaperMC 26.1.2 providing random teleport, TPA requests, and multi-home management. All teleports use a configurable delayed countdown with movement and damage cancellation, particle effects, and MiniMessage-formatted chat output.
+A lightweight teleport plugin for PaperMC and Purpur 26.1.2 – 26.2 providing random teleport, TPA requests, and multi-home management. All teleports use a configurable delayed countdown with movement and damage cancellation, particle effects, and MiniMessage-formatted chat output.
 
 [Features](#features) | [Tech Stack](#tech-stack) | [Project Structure](#project-structure) | [Getting Started](#getting-started) | [Development](#development) | [Build & Deployment](#build--deployment) | [Configuration](#configuration) | [Commands & Permissions](#commands--permissions) | [Core Design](#core-design) | [Troubleshooting](#troubleshooting) | [Contributing](#contributing) | [License](#license)
 
@@ -115,11 +116,24 @@ GUI, even though you can still browse the list.
 
 | Category | Technology | Version |
 |----------|------------|---------|
-| Platform | PaperMC | 26.1.2 |
+| Platform | PaperMC / Purpur | 26.1.2 – 26.2 |
 | Language | Java | 25 |
 | Build Tool | Maven | 3.9+ |
-| Core API | `io.papermc.paper:paper-api` | 26.1.2.build.72-stable |
+| Core API | `io.papermc.paper:paper-api` | 26.1.2.build.72-stable (pinned) |
 | Text Formatting | Adventure / MiniMessage | Provided by Paper |
+
+### Supported Platforms
+
+| Server | Status | Notes |
+|--------|--------|-------|
+| **PaperMC 26.1.2 – 26.2** | ✅ Supported | `api-version: '26.1.2'` means "26.1.2 or newer", so one JAR runs on the whole supported 26.x line. |
+| **PurpurMC 26.1.2 – 26.2** | ✅ Supported | Purpur is a drop-in Paper replacement. EasyTP imports nothing from `org.purpurmc` and uses no NMS, so it behaves identically. |
+| **Folia** | ❌ Not supported | Folia refuses to load the plugin (`folia-supported` is not declared). Making it work requires migrating every scheduler call to the region schedulers — see [Folia Compatibility](#folia-compatibility) below. |
+
+The build compiles against the **oldest** API version it claims (`26.1.2`), which guarantees it
+cannot accidentally use API that only exists in a newer release. It is additionally verified to
+compile against `26.2` stable, confirming no API it relies on was removed in 26.2 (notably the
+Adventure 5 changes).
 
 ---
 
@@ -166,7 +180,7 @@ EasyTP/
 
 ### Prerequisites
 
-- **Server**: PaperMC 26.1.2
+- **Server**: PaperMC or Purpur 26.1.2 – 26.2
 - **Java**: OpenJDK 25 or compatible
 - **Build Tool**: Maven 3.9+ (only if building from source)
 
@@ -402,6 +416,41 @@ loads are capped rather than merely rate-limited.
 2. If the player moves or takes damage, the task is cancelled.
 3. When the countdown reaches zero, the player is teleported asynchronously.
 4. Arrival particles and completion messages are shown on the main thread.
+
+---
+
+## Folia Compatibility
+
+**EasyTP does not currently support Folia.** It does not declare `folia-supported: true`, so Folia
+refuses to load the plugin cleanly instead of loading it and failing at runtime.
+
+Folia removes the main thread: each world is split into independently ticking regions, and server
+API may only be touched from the thread that owns the relevant region. EasyTP is written for a
+single main thread, and these usages are not valid on Folia:
+
+| Area | Blocking usage |
+|------|----------------|
+| Scheduling | `Bukkit.getScheduler()` in 5 places, plus the countdown task built on `BukkitRunnable` |
+| Chunk access | Synchronous `world.getChunkAt(...)` in 2 places |
+| Region affinity | `spawnParticle`, `openInventory`, `closeInventory`, `showTitle` and `playSound` must run on the thread owning the player |
+| Async safety | `world.getWorldBorder()` is read from the RTP validation thread |
+
+The migration is **mechanical rather than architectural**: the four portable schedulers —
+`getGlobalRegionScheduler`, `getRegionScheduler`, `getAsyncScheduler` and `Entity#getScheduler()` —
+already ship in the `paper-api` this plugin compiles against, so one JAR can serve Paper, Purpur
+**and** Folia with no extra dependency and no separate build.
+
+### Recommendation: one codebase, not a separate Folia edition
+
+Comparable plugins take exactly this route — [LeafRTP](https://www.spigotmc.org/resources/leafrtp-paper-folia-velocity.94812/)
+ships a single artifact for Paper, Folia *and* Velocity, and PaperMC maintains an official
+[Supporting Paper and Folia](https://docs.papermc.io/paper/dev/folia-support/) guide for it.
+`RtpScheduler` was already written as the seam for this change, so the architecture is prepared.
+
+One caveat worth planning for: Folia is genuinely *faster* at random teleport, because region
+threads parallelise a search that Paper serialises onto one thread. But `/rtp`'s habit of preloading
+chunks thousands of blocks away across dimensions is far more expensive under regionisation — on
+Folia, shrink `rtp.spiral.ring-zones`. That is a configuration concern, not a reason to fork.
 
 ---
 

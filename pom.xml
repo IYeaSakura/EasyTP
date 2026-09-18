@@ -11,13 +11,21 @@
     <packaging>jar</packaging>
 
     <name>EasyTP</name>
-    <description>A lightweight teleport plugin with random teleport and TPA requests for PaperMC 26.1.2</description>
+    <description>A lightweight teleport plugin with random teleport and TPA requests for PaperMC and Purpur 26.1.2 - 26.2</description>
 
     <properties>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <paper.api.version>[26.1.2.build,)</paper.api.version>
+        <!--
+            Pin an exact -stable build. A range such as [26.1.2.build,) resolves to the HIGHEST
+            matching version, which in this repository is a 26.3 alpha. Compiling against an
+            unreleased API while declaring api-version 26.1.2 is how a plugin ends up throwing
+            NoSuchMethodError on the very server it claims to support, and Paper labels Maven
+            ranges "Discouraged" for exactly this reason. Keep this pinned to the oldest stable
+            API the plugin targets.
+        -->
+        <paper.api.version>26.1.2.build.72-stable</paper.api.version>
     </properties>
 
     <repositories>
