@@ -72,13 +72,28 @@
 有两个互相独立的设置，一个管**命令能在哪使用**，另一个管**能把玩家送到哪**：
 
 - **按命令白名单**：`dimensions.<command>` 把命令限制在指定维度内。每个命令都有自己的列表
-  （`rtp`、`home`、`sethome`、`delhome`、`homelist`、`tpa`、`tphere`、`tpaccept`、`tpdeny`）。
+  （`rtp`、`home`、`sethome`、`delhome`、`tpa`、`tphere`、`tpaccept`、`tpdeny`）。
   列表缺失或为空表示**不做限制**，这也是默认行为。
 - **跨维度开关**：将 `teleport.allow-cross-dimension` 设为 `false` 后，任何会把玩家送到其他维度的
   传送都会被拒绝，并在提示中说明来源与目标维度。覆盖 `/home`、`/tpa`、`/tphere`、同意请求，
   以及从 `/homelist` GUI 传送。`/rtp` 不受影响——它只在玩家当前世界内搜索。
 - **按维度区分家的图标**：`/homelist` 中主世界的家显示为草方块、下界为地狱岩、末地为末地石，
   物品 lore 中也会标注维度。
+
+#### `/homelist` 的限制方式
+
+`/homelist` 是**查看**入口，因此刻意不做维度限制：在任何维度都能打开，只有关闭整个家命令类
+（`commands.home.enable: false`）才会禁用它。它**能做什么**则按动作分别限制，各自遵循对应的命令：
+
+| GUI 中的动作 | 受什么限制 |
+|---|---|
+| 左键点击家（传送） | `dimensions.home` + `teleport.allow-cross-dimension` |
+| 编辑菜单 → 重置坐标 | `dimensions.sethome`——家会被移动到玩家当前所在维度 |
+| Shift + 右键（删除） | `dimensions.delhome` |
+| 编辑菜单 → 重命名 | 不受维度限制——重命名不会移动家 |
+
+因此：若 `sethome` 不包含 `THE_END`，站在末地时无法修改家的坐标；若关闭了跨维度传送，
+即使能浏览列表，也无法从 GUI 传送到其他维度的家。
 
 ### 本地化
 - **语言文件**：玩家可见文本位于 `lang/messages_en.yml` 和 `lang/messages_zh.yml`，由 `language` 设置选择。

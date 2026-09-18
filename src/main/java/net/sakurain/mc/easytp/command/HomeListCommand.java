@@ -11,6 +11,12 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * /homelist opens the home management GUI.
+ *
+ * <p>Opening the GUI is deliberately <em>not</em> dimension-gated: it only shows information, so it
+ * works in every dimension. The actions taken from inside it are gated individually — teleporting
+ * follows {@code dimensions.home} and {@code teleport.allow-cross-dimension}, relocating a home
+ * follows {@code dimensions.sethome}, and deleting follows {@code dimensions.delhome}. Only
+ * switching off the whole home command class disables /homelist itself.</p>
  */
 public class HomeListCommand implements CommandExecutor {
 
@@ -26,9 +32,6 @@ public class HomeListCommand implements CommandExecutor {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (!(sender instanceof Player player)) {
             MessageUtil.send(sender, "player-only");
-            return true;
-        }
-        if (!teleportManager.checkDimension(player, "homelist")) {
             return true;
         }
         if (!teleportManager.checkCooldown(player, "homelist")) {

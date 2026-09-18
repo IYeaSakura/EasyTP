@@ -73,15 +73,32 @@ A lightweight teleport plugin for PaperMC 26.1.2 providing random teleport, TPA 
 Two independent settings decide where teleports may happen — one is about **where a command may be
 used**, the other about **where it may send the player**:
 
-- **Per-Command Whitelist**: `dimensions.<command>` limits a command to a set of dimensions. Every
-  command has its own list (`rtp`, `home`, `sethome`, `delhome`, `homelist`, `tpa`, `tphere`,
-  `tpaccept`, `tpdeny`). A missing or empty list means **no restriction**, which is the default.
+- **Per-Command Whitelist**: `dimensions.<command>` limits a command to a set of dimensions. Each
+  command has its own list (`rtp`, `home`, `sethome`, `delhome`, `tpa`, `tphere`, `tpaccept`,
+  `tpdeny`). A missing or empty list means **no restriction**, which is the default.
 - **Cross-Dimension Toggle**: with `teleport.allow-cross-dimension: false`, any teleport that would
   move a player into another dimension is refused and both dimensions are named in the message. This
   covers `/home`, `/tpa`, `/tphere`, accepting a request, and teleporting from the `/homelist` GUI.
   `/rtp` is unaffected — it only ever searches the player's current world.
 - **Dimension-Aware Home Icons**: `/homelist` renders each home as a grass block (Overworld),
   netherrack (Nether) or end stone (The End), and the item lore names the dimension.
+
+#### How `/homelist` is gated
+
+`/homelist` is a **view**, so it is deliberately not dimension-gated: it opens in every dimension.
+Only switching off the whole home command class (`commands.home.enable: false`) disables it. What it
+can *do* is gated per action, each following its equivalent command:
+
+| Action in the GUI | Governed by |
+|-------------------|-------------|
+| Left-click a home (teleport) | `dimensions.home` + `teleport.allow-cross-dimension` |
+| Edit menu → reset coordinates | `dimensions.sethome` — the home would move to your current dimension |
+| Shift + right-click (delete) | `dimensions.delhome` |
+| Edit menu → rename | not dimension-gated — renaming never moves a home |
+
+So with `sethome` excluding `THE_END`, a home cannot be relocated while you stand in the End; and
+with `teleport.allow-cross-dimension: false` you cannot reach a home in another dimension from the
+GUI, even though you can still browse the list.
 
 ### Localization
 - **Language Files**: Player-facing text lives in `lang/messages_en.yml` and `lang/messages_zh.yml`, selected by the `language` setting.

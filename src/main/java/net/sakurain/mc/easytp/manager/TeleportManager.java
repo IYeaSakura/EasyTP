@@ -186,7 +186,16 @@ public class TeleportManager {
         }
     }
 
+    /**
+     * Move a home to the player's current position, as offered by the home edit GUI.
+     *
+     * <p>This is the GUI equivalent of setting a home, so it obeys {@code dimensions.sethome}:
+     * with that whitelist excluding a dimension, a home cannot be relocated from there.</p>
+     */
     public void updateHomeLocation(@NotNull Player player, @NotNull String name) {
+        if (!checkDimension(player, "sethome")) {
+            return;
+        }
         try {
             HomeData home = homeRepository.find(player.getUniqueId(), name);
             if (home == null) {

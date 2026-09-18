@@ -178,12 +178,17 @@ teleport:
 #
 # Note this gates where a command is *used*, not where it teleports to — use
 # `teleport.allow-cross-dimension` for the latter.
+#
+# /homelist is intentionally absent: opening the GUI only displays information, so it works in
+# every dimension. The actions inside it are gated individually, following the equivalent command:
+#   - teleporting to a home  -> dimensions.home  + teleport.allow-cross-dimension
+#   - relocating a home      -> dimensions.sethome
+#   - deleting a home        -> dimensions.delhome
 dimensions:
   rtp: [OVERWORLD, NETHER, THE_END]
   home: [OVERWORLD, NETHER, THE_END]
   sethome: [OVERWORLD, NETHER, THE_END]
   delhome: [OVERWORLD, NETHER, THE_END]
-  homelist: [OVERWORLD, NETHER, THE_END]
   tpa: [OVERWORLD, NETHER, THE_END]
   tphere: [OVERWORLD, NETHER, THE_END]
   tpaccept: [OVERWORLD, NETHER, THE_END]
