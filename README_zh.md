@@ -186,7 +186,7 @@ cd EasyTP
 mvn clean package
 
 # 2. 将产物复制到服务器 plugins 目录
-cp target/easytp-1.0.0-SNAPSHOT.jar /path/to/server/plugins/
+cp target/easytp-1.1.0.jar /path/to/server/plugins/
 
 # 3. 启动或重启 Paper 服务器
 ```
@@ -241,7 +241,7 @@ cd EasyTP
 mvn clean package
 ```
 
-构建产物位于 `target/easytp-1.0.0-SNAPSHOT.jar`。
+构建产物位于 `target/easytp-1.1.0.jar`。
 
 ### 构建阶段
 
@@ -254,7 +254,7 @@ mvn clean package
 
 ### 部署
 
-1. 将 `target/easytp-1.0.0-SNAPSHOT.jar` 复制到 Paper 服务器的 `plugins/` 目录。
+1. 将 `target/easytp-1.1.0.jar` 复制到 Paper 服务器的 `plugins/` 目录。
 2. 启动或重启服务器。
 3. 编辑 `plugins/EasyTP/config.yml` 以自定义消息、RTP 范围和冷却时间。
 

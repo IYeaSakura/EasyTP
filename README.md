@@ -193,7 +193,7 @@ cd EasyTP
 mvn clean package
 
 # 2. Copy the artifact to the server plugins directory
-cp target/easytp-1.0.0-SNAPSHOT.jar /path/to/server/plugins/
+cp target/easytp-1.1.0.jar /path/to/server/plugins/
 
 # 3. Start or restart the Paper server
 ```
@@ -249,7 +249,7 @@ cd EasyTP
 mvn clean package
 ```
 
-The build produces `target/easytp-1.0.0-SNAPSHOT.jar`.
+The build produces `target/easytp-1.1.0.jar`.
 
 ### Build Stages
 
@@ -262,7 +262,7 @@ There is no test stage: the project currently ships no automated tests.
 
 ### Deployment
 
-1. Copy `target/easytp-1.0.0-SNAPSHOT.jar` into the Paper server's `plugins/` directory.
+1. Copy `target/easytp-1.1.0.jar` into the Paper server's `plugins/` directory.
 2. Start or restart the server.
 3. Edit `plugins/EasyTP/config.yml` to customize messages, RTP ranges, and cooldowns.
 

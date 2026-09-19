@@ -41,7 +41,7 @@ try {
 if (-not (Test-Path $cpFile)) {
     throw "could not resolve the compile classpath; run 'mvn dependency:build-classpath' manually to see why"
 }
-$cp = (Get-Content $cpFile -Raw).Trim() + ';' + (Join-Path $repo 'target\easytp-1.0.0-SNAPSHOT.jar')
+$cp = (Get-Content $cpFile -Raw).Trim() + ';' + (Join-Path $repo 'target\easytp-1.1.0.jar')
 
 Write-Host '--- compiling ---'
 $build = Join-Path $PSScriptRoot 'build'
@@ -60,8 +60,8 @@ if ($LASTEXITCODE -ne 0) { throw "jar failed with $LASTEXITCODE" }
 Write-Host '--- deploying ---'
 New-Item -ItemType Directory -Force -Path (Join-Path $srv 'plugins') | Out-Null
 Copy-Item $jar (Join-Path $srv 'plugins') -Force
-Copy-Item (Join-Path $repo 'target\easytp-1.0.0-SNAPSHOT.jar') `
-          (Join-Path $srv 'plugins\EasyTP-1.0.0-SNAPSHOT.jar') -Force
+Copy-Item (Join-Path $repo 'target\easytp-1.1.0.jar') `
+          (Join-Path $srv 'plugins\EasyTP-1.1.0.jar') -Force
 
 Write-Host '--- clearing previous results and plugin state ---'
 Remove-Item (Join-Path $srv 'bench-out') -Recurse -Force -ErrorAction SilentlyContinue
